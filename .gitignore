@@ -1,0 +1,24 @@
+# Node / Cloud Functions
+functions/node_modules/
+functions/lib/
+functions/.env
+functions/.env.*
+*.local
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Secrets / service accounts — never commit
+*serviceAccount*.json
+GoogleService-Info.plist
+.env
+
+# Xcode / Swift
+ios/**/xcuserdata/
+ios/**/*.xcuserstate
+ios/.build/
+ios/DerivedData/
+.DS_Store

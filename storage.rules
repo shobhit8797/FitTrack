@@ -1,0 +1,19 @@
+rules_version = '2';
+
+// Meal photos live under mealPhotos/{uid}/... — only the owner can read/write,
+// and only reasonably-sized image uploads are allowed (spec §13: photos go to
+// the backend only on explicit user action; never store blobs in the DB).
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /mealPhotos/{uid}/{allPaths=**} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

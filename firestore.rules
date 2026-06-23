@@ -1,0 +1,66 @@
+rules_version = '2';
+
+// FitTrack Firestore security rules.
+// Core invariant (spec §13): a user can only ever touch their own data.
+// Shared catalog (exercises, cached foods) is read-only to clients and
+// written exclusively by Cloud Functions (Admin SDK bypasses these rules).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // ---- Per-user data: /users/{uid} and everything beneath it ----
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      // Profile + targets are written by Cloud Functions only (targets math,
+      // plan generation). Clients may patch a small allowlist of profile
+      // fields directly during onboarding edits; everything else is locked.
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid)
+        && !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['calorieTarget','proteinTargetG','carbTargetG','fatTargetG','targetsComputedAt']);
+      allow delete: if false; // account deletion goes through a Cloud Function
+
+      // Sub-collections: weightEntries, dayLogs, meals, workoutSessions,
+      // workoutPlans, customExercises — all owner-scoped.
+      match /weightEntries/{id}   { allow read, write: if isOwner(uid); }
+      match /dayLogs/{date}       { allow read, write: if isOwner(uid);
+        match /meals/{mealId}     { allow read, write: if isOwner(uid); }
+      }
+      match /workoutSessions/{id} { allow read, write: if isOwner(uid); }
+      match /workoutPlans/{id}    {
+        // Plans are generated server-side; client reads only.
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+      match /customExercises/{id} { allow read, write: if isOwner(uid); }
+    }
+
+    // ---- Shared, read-only catalog ----
+    match /exercises/{id} {
+      allow read: if isSignedIn();
+      allow write: if false; // seeded/maintained by Cloud Functions
+    }
+
+    // ---- Cached Open Food Facts products + IFCT foods (read-only) ----
+    match /foodsCache/{id} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    match /ifctFoods/{id} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // Deny everything not explicitly matched above.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

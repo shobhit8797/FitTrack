@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Usage strings required by spec §12 / §13. -->
+    <key>NSHealthShareUsageDescription</key>
+    <string>FitTrack reads your steps, active energy, exercise minutes, and body mass to show daily activity and weight trends. This data stays on your device.</string>
+    <key>NSHealthUpdateUsageDescription</key>
+    <string>FitTrack can optionally save your logged weight and dietary energy back to Apple Health.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>FitTrack uses the camera to scan barcodes and photograph meals and nutrition labels for logging.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>FitTrack lets you pick a meal photo from your library to estimate its nutrition.</string>
+
+    <!-- Sign in with Apple / Google return URL handling is configured in the
+         target capabilities + URL schemes; add your reversed client ID here. -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>REPLACE_WITH_REVERSED_GOOGLE_CLIENT_ID</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>

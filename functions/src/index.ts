@@ -18,3 +18,6 @@ export { searchExercises, getExercise, createCustomExercise } from './exercises/
 
 // Account deletion (spec §13: delete account + all data)
 export { deleteAccount } from './users/deletion';
+
+// Account data export (spec §13: export account data)
+export { exportData } from './users/export';

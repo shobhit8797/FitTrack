@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // Log hub (spec §8): the ➕ entry point — photo / barcode / manual / weight.
 // AI/DB estimates always land in an editable confirmation sheet (§7.3) — never
@@ -157,35 +158,195 @@ struct MealConfirmationList: View {
     }
 }
 
-// Placeholder sheets that share the confirmation flow — camera/scan wiring (§7.3)
-// is the next implementation step.
+// MARK: - Photo → analyzeMeal → editable confirmation (spec §7.3)
 struct MealPhotoEntrySheet: View {
+    @Environment(FunctionsClient.self) private var functions
     @Environment(\.dismiss) private var dismiss
+    @State private var items: [AnalyzedFoodItem] = []
+    @State private var busy = false
+    @State private var error: String?
+
     var body: some View {
         NavigationStack {
-            EmptyStateView(systemImage: "camera", title: "Photo logging",
-                           message: "Camera + VisionKit capture, then analyzeMeal → confirmation. Wire next.")
-                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
+            Group {
+                if busy {
+                    ProgressView("Analyzing photo…")
+                } else if !items.isEmpty {
+                    MealConfirmationList(items: $items, onSave: dismiss.callAsFunction)
+                } else {
+                    VStack(spacing: Theme.Spacing.m) {
+                        // Photo only leaves the device on this explicit pick (§13).
+                        ImageSourcePicker(prompt: "Snap your meal") { image in
+                            Task { await analyze(image) }
+                        }
+                        if let error { Text(error).foregroundStyle(.red).font(.caption) }
+                    }
+                }
+            }
+            .navigationTitle("Photo meal")
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+        }
+    }
+
+    private func analyze(_ image: UIImage) async {
+        guard let base64 = ImageEncoding.jpegBase64(image) else {
+            error = "Couldn't read that image — please try another."
+            return
+        }
+        busy = true; error = nil
+        defer { busy = false }
+        do {
+            let result = try await functions.analyzeMeal(jpegBase64: base64)
+            if result.isEmpty {
+                error = "No food found in that photo — try again or describe it instead."
+            } else {
+                items = result
+            }
+            // TODO (§13): optionally upload the JPEG to Firebase Storage and set
+            // photoUrl on the saved meals. Left nil for now to keep capture minimal.
+        } catch {
+            self.error = error.localizedDescription
         }
     }
 }
+
+// MARK: - Barcode → foodBarcode → editable confirmation (spec §7.3)
 struct BarcodeEntrySheet: View {
+    @Environment(FunctionsClient.self) private var functions
     @Environment(\.dismiss) private var dismiss
+    @State private var items: [AnalyzedFoodItem] = []
+    @State private var busy = false
+    @State private var error: String?
+    @State private var didScan = false
+
     var body: some View {
         NavigationStack {
-            EmptyStateView(systemImage: "barcode.viewfinder", title: "Barcode scan",
-                           message: "DataScannerViewController → foodBarcode → confirmation. Wire next.")
-                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
+            Group {
+                if !items.isEmpty {
+                    MealConfirmationList(items: $items, onSave: dismiss.callAsFunction)
+                } else if BarcodeScannerView.isSupported {
+                    ZStack {
+                        BarcodeScannerView { code in
+                            guard !didScan else { return }
+                            didScan = true
+                            Task { await lookup(code) }
+                        }
+                        .ignoresSafeArea(edges: .bottom)
+                        if busy { ProgressView("Looking up product…").padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: Theme.cardRadius)) }
+                        if let error {
+                            VStack {
+                                Spacer()
+                                Text(error).font(.caption).foregroundStyle(.white)
+                                    .padding(Theme.Spacing.m)
+                                    .frame(maxWidth: .infinity)
+                                    .background(.red.opacity(0.85))
+                            }
+                        }
+                    }
+                } else {
+                    EmptyStateView(systemImage: "barcode.viewfinder", title: "Scanning unavailable",
+                                   message: "This device can't scan barcodes. Try the photo or describe flow instead.")
+                }
+            }
+            .navigationTitle("Scan barcode")
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+        }
+    }
+
+    private func lookup(_ code: String) async {
+        busy = true; error = nil
+        defer { busy = false }
+        do {
+            guard let product = try await functions.foodBarcode(code) else {
+                error = "Product not found. Try the label or photo flow."
+                didScan = false // allow another scan attempt
+                return
+            }
+            items = [FoodCaptureMapping.item(from: product, barcode: code)]
+        } catch {
+            self.error = error.localizedDescription
+            didScan = false
         }
     }
 }
+
+// MARK: - Label OCR → parseLabel → editable confirmation (spec §7.3)
 struct LabelEntrySheet: View {
+    @Environment(FunctionsClient.self) private var functions
     @Environment(\.dismiss) private var dismiss
+    @State private var items: [AnalyzedFoodItem] = []
+    @State private var busy = false
+    @State private var error: String?
+
     var body: some View {
         NavigationStack {
-            EmptyStateView(systemImage: "text.viewfinder", title: "Label OCR",
-                           message: "Vision OCR → parseLabel → confirmation. Wire next.")
-                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
+            Group {
+                if busy {
+                    ProgressView("Reading label…")
+                } else if !items.isEmpty {
+                    MealConfirmationList(items: $items, onSave: dismiss.callAsFunction)
+                } else {
+                    VStack(spacing: Theme.Spacing.m) {
+                        // OCR runs on-device; image + text leave only on this pick (§13).
+                        ImageSourcePicker(prompt: "Photograph the nutrition label") { image in
+                            Task { await parse(image) }
+                        }
+                        if let error { Text(error).foregroundStyle(.red).font(.caption) }
+                    }
+                }
+            }
+            .navigationTitle("Nutrition label")
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
+    }
+
+    private func parse(_ image: UIImage) async {
+        busy = true; error = nil
+        defer { busy = false }
+        let ocrText = await LabelOCR.recognizeText(in: image)
+        let base64 = ImageEncoding.jpegBase64(image)
+        do {
+            let label = try await functions.parseLabel(ocrText: ocrText, jpegBase64: base64)
+            items = [FoodCaptureMapping.item(from: label)]
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+}
+
+/// Maps barcode/label results (per-serving macros) into a single editable
+/// AnalyzedFoodItem so they can reuse MealConfirmationList (spec §7.3). The user
+/// can then adjust calories/macros (e.g. for multiple servings) before saving.
+enum FoodCaptureMapping {
+    static func item(from product: FunctionsClient.CachedProduct, barcode: String) -> AnalyzedFoodItem {
+        let m = product.perServing
+        let name = [product.brand, product.productName].compactMap { $0 }.joined(separator: " ")
+        return AnalyzedFoodItem(
+            name: name.isEmpty ? "Scanned product" : name,
+            dishKey: barcode,
+            servingDescription: product.servingSize ?? "1 serving",
+            calories: m.calories ?? 0,
+            proteinG: m.proteinG ?? 0,
+            carbsG: m.carbsG ?? 0,
+            fatG: m.fatG ?? 0,
+            confidence: 0.9,
+            grounded: nil
+        )
+    }
+
+    static func item(from label: FunctionsClient.LabelResult) -> AnalyzedFoodItem {
+        let m = label.perServing
+        let name = [label.brand, label.productName].compactMap { $0 }.joined(separator: " ")
+        return AnalyzedFoodItem(
+            name: name.isEmpty ? "Label item" : name,
+            dishKey: label.productName ?? "label",
+            servingDescription: label.servingSize ?? "1 serving",
+            calories: m.calories ?? 0,
+            proteinG: m.proteinG ?? 0,
+            carbsG: m.carbsG ?? 0,
+            fatG: m.fatG ?? 0,
+            confidence: label.confidence,
+            grounded: nil
+        )
     }
 }

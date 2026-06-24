@@ -1,5 +1,6 @@
 import AuthenticationServices
 import CryptoKit
+import GoogleSignIn
 import SwiftUI
 
 // Sign-in screen offering all three methods (spec §6a, §15 phase 3). After any
@@ -150,11 +151,50 @@ struct SignInView: View {
     }
 }
 
-// Thin seam over the Google Identity SDK. Real implementation calls
-// GIDSignIn.sharedInstance.signIn(withPresenting:) and returns its tokens.
+// Thin seam over the Google Identity SDK (spec §6a). Drives
+// GIDSignIn.sharedInstance.signIn(withPresenting:) and returns its tokens, which
+// AuthService.signInWithGoogle(idToken:accessToken:) trades for a Firebase session.
+//
+// Xcode/project setup required (outside these files):
+//   • Add the GoogleSignIn SDK via Swift Package Manager.
+//   • Set `GIDClientID` in Info.plist (== `CLIENT_ID` from GoogleService-Info.plist),
+//     or configure GIDConfiguration with that client ID at launch.
+//   • Add the reversed client ID (`REVERSED_CLIENT_ID`) as a URL scheme under
+//     CFBundleURLTypes so the OAuth callback can return to the app, and forward
+//     the callback URL via `GIDSignIn.sharedInstance.handle(_:)` from
+//     `onOpenURL`/the scene delegate.
 enum GoogleSignInHelper {
     struct Tokens { let idToken: String; let accessToken: String }
+
+    @MainActor
     static func signIn() async throws -> Tokens {
-        throw AuthError.underlying("Google Sign-In SDK not yet wired — add GoogleSignIn via SPM and implement GIDSignIn flow.")
+        // GIDSignIn reads its client ID from `GIDClientID` in Info.plist by default.
+        // If you prefer to configure programmatically, set
+        // `GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID:)`
+        // with the CLIENT_ID from GoogleService-Info.plist before calling signIn.
+        guard let presenter = topViewController() else {
+            throw AuthError.underlying("No presenting view controller for Google Sign-In.")
+        }
+
+        let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: presenter)
+        guard let idToken = result.user.idToken?.tokenString else {
+            throw AuthError.missingToken
+        }
+        let accessToken = result.user.accessToken.tokenString
+        return Tokens(idToken: idToken, accessToken: accessToken)
+    }
+
+    /// Resolves the foreground key window's top-most view controller to present from.
+    @MainActor
+    private static func topViewController() -> UIViewController? {
+        let scene = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }
+        let keyWindow = scene?.windows.first { $0.isKeyWindow } ?? scene?.windows.first
+        var top = keyWindow?.rootViewController
+        while let presented = top?.presentedViewController {
+            top = presented
+        }
+        return top
     }
 }

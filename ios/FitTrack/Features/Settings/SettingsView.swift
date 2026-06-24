@@ -9,6 +9,8 @@ struct SettingsView: View {
     @Environment(HealthKitService.self) private var health
     @State private var showDeleteConfirm = false
     @State private var error: String?
+    @State private var exportURL: URL?
+    @State private var isExporting = false
 
     var body: some View {
         NavigationStack {
@@ -27,7 +29,11 @@ struct SettingsView: View {
                 }
 
                 Section("Your data") {
-                    Button("Export my data (JSON)") { /* export reads Firestore tree → file */ }
+                    Button("Export my data (JSON)") { Task { await exportData() } }
+                        .disabled(isExporting)
+                    if let exportURL {
+                        ShareLink("Share export", item: exportURL)
+                    }
                     Button("Delete account & all data", role: .destructive) {
                         showDeleteConfirm = true
                     }
@@ -46,6 +52,29 @@ struct SettingsView: View {
             } message: {
                 Text("This removes your profile, logs, photos, and sign-in. It cannot be undone.")
             }
+        }
+    }
+
+    // Export (spec §13): call the exportData callable, write the returned tree to
+    // a JSON file on disk, then surface a ShareLink so the user can save/send it.
+    private func exportData() async {
+        isExporting = true
+        defer { isExporting = false }
+        do {
+            let result = try await Functions.functions(region: "us-central1")
+                .httpsCallable("exportData").call([:])
+            guard let payload = result.data as? [String: Any] else {
+                self.error = "Export returned an unexpected response."
+                return
+            }
+            let json = try JSONSerialization.data(
+                withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("fittrack-export.json")
+            try json.write(to: url, options: .atomic)
+            self.exportURL = url
+        } catch {
+            self.error = error.localizedDescription
         }
     }
 

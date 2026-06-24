@@ -40,6 +40,10 @@ struct TodayView: View {
             }
             .navigationTitle("Today")
             .task(id: selectedDate) { await model.load(repo: repo, health: health, date: selectedDate) }
+            // Live HealthKit refresh (spec §7.5): reload when an observer fires.
+            .onChange(of: health.lastUpdate) {
+                Task { await model.load(repo: repo, health: health, date: selectedDate) }
+            }
         }
     }
 

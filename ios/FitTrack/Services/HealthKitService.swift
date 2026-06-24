@@ -10,6 +10,18 @@ final class HealthKitService {
     private let store = HKHealthStore()
     private(set) var authorized = false
 
+    /// Bumped on the main actor whenever an observer query reports new samples
+    /// (spec §7.5). Views key a reload off this so the dashboard reflects live
+    /// Watch/iPhone data without manual refresh.
+    private(set) var lastUpdate = Date.distantPast
+
+    /// Identifiers we watch for live updates (steps, active energy, body mass).
+    private let observedIdentifiers: [HKQuantityTypeIdentifier] = [
+        .stepCount, .activeEnergyBurned, .bodyMass,
+    ]
+    private var observerQueries: [HKObserverQuery] = []
+    private var observing = false
+
     var isAvailable: Bool { HKHealthStore.isHealthDataAvailable() }
 
     private var readTypes: Set<HKObjectType> {
@@ -33,6 +45,31 @@ final class HealthKitService {
         guard isAvailable else { return }
         try await store.requestAuthorization(toShare: writeTypes, read: readTypes)
         authorized = true
+        startObserving()
+    }
+
+    /// Live refresh (spec §7.5): an HKObserverQuery per watched type plus background
+    /// delivery, so the dashboard updates as Watch/iPhone samples arrive. Idempotent.
+    func startObserving() {
+        guard isAvailable, !observing else { return }
+        observing = true
+        for id in observedIdentifiers {
+            guard let type = HKObjectType.quantityType(forIdentifier: id) else { continue }
+            let query = HKObserverQuery(sampleType: type, predicate: nil) { [weak self] _, completion, _ in
+                // Surface the change to observers, then ack so HealthKit stops retrying.
+                self?.bumpUpdate()
+                completion()
+            }
+            store.execute(query)
+            observerQueries.append(query)
+            // Wake the app for new samples even when backgrounded. Hourly cadence is
+            // plenty for daily rollups and is battery-friendly.
+            store.enableBackgroundDelivery(for: type, frequency: .hourly) { _, _ in }
+        }
+    }
+
+    private func bumpUpdate() {
+        Task { @MainActor in self.lastUpdate = Date() }
     }
 
     /// Daily rollup for the dashboard (spec §7.5).

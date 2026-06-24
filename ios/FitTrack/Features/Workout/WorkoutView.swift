@@ -69,20 +69,34 @@ struct WorkoutView: View {
 }
 
 struct ExerciseRow: View {
+    @Environment(FunctionsClient.self) private var functions
     let exercise: PlannedExercise
+    // Resolved once per row appearance; nil URL means no video to link to.
+    @State private var videoURL: URL?
+    @State private var resolved = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Text(exercise.name).fontWeight(.medium)
                 Spacer()
                 Text("\(exercise.sets) × \(exercise.repRange)").foregroundStyle(.secondary)
-                if let url = exercise.exerciseId.flatMap({ _ in URL(string: "https://fittrack.app") }) {
-                    // Real impl: resolve videoUrl from catalog via getExercise.
-                    Link(destination: url) { Image(systemName: "play.circle") }
+                // Hidden until the catalog lookup yields a real videoUrl.
+                if let videoURL {
+                    Link(destination: videoURL) { Image(systemName: "play.circle") }
                 }
             }
             if !exercise.notes.isEmpty {
                 Text(exercise.notes).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .task {
+            // One lookup per row appearance — don't spam the network.
+            guard !resolved else { return }
+            resolved = true
+            let catalog = try? await functions.resolveExercise(id: exercise.exerciseId, name: exercise.name)
+            if let urlString = catalog?.videoUrl, let url = URL(string: urlString) {
+                videoURL = url
             }
         }
     }
@@ -95,6 +109,8 @@ struct SessionLogSheet: View {
     @Environment(\.dismiss) private var dismiss
     let day: WorkoutDay
     @State private var sets: [LoggedSet] = []
+    // Progressive-overload prefill: prior session's sets keyed by exercise name.
+    @State private var priorSets: [String: [LoggedSet]] = [:]
 
     var body: some View {
         NavigationStack {
@@ -102,9 +118,16 @@ struct SessionLogSheet: View {
                 ForEach(day.exercises) { ex in
                     Section(ex.name) {
                         ForEach(0..<ex.sets, id: \.self) { i in
-                            SetRow(exerciseName: ex.name, setIndex: i, sets: $sets)
+                            SetRow(exerciseName: ex.name, setIndex: i,
+                                   prior: prior(for: ex.name, setIndex: i), sets: $sets)
                         }
                     }
+                }
+            }
+            .task {
+                // Fetch each exercise's most recent prior sets once, for prefill.
+                for ex in day.exercises where priorSets[ex.name] == nil {
+                    priorSets[ex.name] = await repo.lastSets(forExerciseNamed: ex.name)
                 }
             }
             .navigationTitle(day.dayLabel)
@@ -115,6 +138,11 @@ struct SessionLogSheet: View {
                 }
             }
         }
+    }
+
+    /// The matching prior set for an exercise/index, used to seed the row.
+    private func prior(for name: String, setIndex: Int) -> LoggedSet? {
+        priorSets[name]?.first { $0.setIndex == setIndex }
     }
 
     private func save() async {
@@ -128,9 +156,12 @@ struct SessionLogSheet: View {
 struct SetRow: View {
     let exerciseName: String
     let setIndex: Int
+    // Prior session's set for this exercise/index (progressive-overload prefill).
+    let prior: LoggedSet?
     @Binding var sets: [LoggedSet]
     @State private var weight = 0.0
     @State private var reps = 8
+    @State private var prefilled = false
 
     var body: some View {
         HStack {
@@ -142,6 +173,16 @@ struct SetRow: View {
         }
         .onChange(of: weight) { syncSet() }
         .onChange(of: reps) { syncSet() }
+        // Seed from the prior session once it arrives, without clobbering edits.
+        .onChange(of: prior) { applyPrefill() }
+        .onAppear { applyPrefill() }
+    }
+
+    private func applyPrefill() {
+        guard !prefilled, let prior else { return }
+        prefilled = true
+        weight = prior.weightKg
+        reps = prior.reps
     }
 
     private func syncSet() {

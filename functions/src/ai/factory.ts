@@ -6,7 +6,7 @@ import { LLMProvider } from './types';
 // Configurable layer (spec §10). PROVIDER selects the implementation; model
 // ids live in config so they change without redeploying the app binary.
 // Secrets are injected at runtime — they never appear in client code.
-export const PROVIDER = defineString('PROVIDER', { default: 'openrouter' });
+export const PROVIDER = defineString('PROVIDER', { default: 'gemini' });
 export const MODEL_OPENROUTER = defineString('MODEL_OPENROUTER', {
   default: 'google/gemini-3.5-flash',
 });
@@ -26,5 +26,11 @@ export function makeProvider(): LLMProvider {
   return new OpenRouterProvider(MODEL_OPENROUTER.value(), OPENROUTER_API_KEY.value());
 }
 
-/** Secrets that any AI-calling function must declare in its `runWith`. */
-export const AI_SECRETS = [OPENROUTER_API_KEY, GEMINI_API_KEY];
+/**
+ * Secrets that any AI-calling function binds. Firebase fails a deploy if a bound
+ * secret has no value in Secret Manager, so we bind only the active provider's
+ * key. Default is Gemini → only GEMINI_API_KEY must be set.
+ * To switch to OpenRouter: set PROVIDER=openrouter, create the OPENROUTER_API_KEY
+ * secret, and add OPENROUTER_API_KEY back to this array.
+ */
+export const AI_SECRETS = [GEMINI_API_KEY];

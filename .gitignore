@@ -22,4 +22,5 @@ ios/**/xcuserdata/
 ios/**/*.xcuserstate
 ios/.build/
 ios/DerivedData/
+ios/build/
 .DS_Store

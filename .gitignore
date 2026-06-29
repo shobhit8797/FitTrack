@@ -1,4 +1,5 @@
 # Node / Cloud Functions
+node_modules/
 functions/node_modules/
 functions/lib/
 functions/.env

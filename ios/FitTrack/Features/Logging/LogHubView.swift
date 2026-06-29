@@ -5,7 +5,13 @@ import UIKit
 // AI/DB estimates always land in an editable confirmation sheet (§7.3) — never
 // auto-saved.
 struct LogHubView: View {
+    @Environment(Repository.self) private var repo
     @State private var route: LogRoute?
+    // Workout logging: stream the plan so we can offer its days, then log a
+    // session against the chosen day.
+    @State private var plan: WorkoutPlan?
+    @State private var workoutDay: WorkoutDay?
+    @State private var showWorkoutPicker = false
 
     var body: some View {
         NavigationStack {
@@ -16,11 +22,17 @@ struct LogHubView: View {
                     row("text.viewfinder", "Label", "Photograph a nutrition label") { route = .label }
                     row("pencil", "Describe / manual", "Type what you ate") { route = .text }
                 }
+                Section("Workout") {
+                    row("dumbbell.fill", "Workout", "Record sets against your plan") { startWorkoutLog() }
+                }
                 Section("Body") {
                     row("scalemass.fill", "Weight", "Log today's weight") { route = .weight }
                 }
             }
             .navigationTitle("Log")
+            .task {
+                do { for try await p in repo.planStream() { plan = p } } catch {}
+            }
             .sheet(item: $route) { route in
                 switch route {
                 case .text:    MealTextEntrySheet()
@@ -30,19 +42,66 @@ struct LogHubView: View {
                 case .label:   LabelEntrySheet()
                 }
             }
+            .sheet(item: $workoutDay) { day in SessionLogSheet(day: day) }
+            .confirmationDialog("Which session?", isPresented: $showWorkoutPicker, titleVisibility: .visible) {
+                if let plan {
+                    ForEach(plan.days) { day in
+                        Button(day.dayLabel) { workoutDay = day }
+                    }
+                }
+            } message: {
+                Text(plan == nil
+                     ? "Generate a workout plan from Settings to log sessions against it."
+                     : "Pick the day you trained.")
+            }
+        }
+    }
+
+    /// Mirror of Today's old workout shortcut: if today is a scheduled training
+    /// day with a single obvious match, jump straight in; otherwise let the user
+    /// pick (the dialog also surfaces the "generate a plan" hint when empty).
+    private func startWorkoutLog() {
+        guard let plan, !plan.days.isEmpty else { showWorkoutPicker = true; return }
+        let weekday = Calendar.current.component(.weekday, from: Date()) - 1 // 0=Sun
+        if plan.scheduledWeekdays.contains(weekday), plan.days.count == 1 {
+            workoutDay = plan.days[0]
+        } else {
+            showWorkoutPicker = true
         }
     }
 
     private func row(_ icon: String, _ title: String, _ subtitle: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        Button {
+            Haptics.tap()
+            action()
+        } label: {
             HStack(spacing: Theme.Spacing.m) {
-                Image(systemName: icon).foregroundStyle(Theme.accentTeal).frame(width: 28)
-                VStack(alignment: .leading) {
-                    Text(title).foregroundStyle(.primary)
-                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(Theme.accentTeal)
+                    .frame(width: 40, height: 40)
+                    .background(Theme.accentTeal.opacity(0.12), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(.primary)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
+                Spacer(minLength: Theme.Spacing.s)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
             }
+            .padding(.vertical, Theme.Spacing.xs)
+            .frame(minHeight: Theme.minTapTarget)
+            .contentShape(Rectangle())
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(title)
+        .accessibilityHint(subtitle)
+        .accessibilityAddTraits(.isButton)
     }
 }
 
@@ -69,10 +128,23 @@ struct MealTextEntrySheet: View {
                             TextField("e.g. 1 katori dal + 2 rotis + curd", text: $text, axis: .vertical)
                                 .lineLimit(2...5)
                         }
-                        if let error { Text(error).foregroundStyle(.red).font(.caption) }
-                        Button(busy ? "Estimating…" : "Estimate") {
+                        if let error {
+                            Label(error, systemImage: "exclamationmark.circle.fill")
+                                .foregroundStyle(.red).font(.caption)
+                        }
+                        Button {
+                            Haptics.tap()
                             Task { await estimate() }
-                        }.disabled(busy || text.isEmpty)
+                        } label: {
+                            HStack(spacing: Theme.Spacing.s) {
+                                if busy { ProgressView().tint(.white) }
+                                Text(busy ? "Estimating…" : "Estimate")
+                            }
+                        }
+                        .buttonStyle(PrimaryButtonStyle(enabled: !busy && !text.isEmpty))
+                        .disabled(busy || text.isEmpty)
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
                     }
                 } else {
                     MealConfirmationList(items: $items, onSave: dismiss.callAsFunction)
@@ -109,32 +181,69 @@ struct MealConfirmationList: View {
             DatePicker("When", selection: $date)
 
             ForEach($items) { $item in
-                Section(item.name) {
+                Section {
                     if let g = item.grounded {
                         Picker("Source", selection: Binding(
                             get: { useGrounded.contains(item.id) ? 1 : 0 },
-                            set: { if $0 == 1 { useGrounded.insert(item.id) } else { useGrounded.remove(item.id) } }
+                            set: {
+                                Haptics.selection()
+                                if $0 == 1 { useGrounded.insert(item.id) } else { useGrounded.remove(item.id) }
+                            }
                         )) {
-                            Text("AI estimate (\(item.calories) kcal)").tag(0)
-                            Text("\(g.matchedName) (\(g.calories) kcal)").tag(1)
+                            Label("AI estimate · \(item.calories) kcal", systemImage: "sparkles").tag(0)
+                            Label("\(g.matchedName) · \(g.calories) kcal", systemImage: "checkmark.seal.fill").tag(1)
                         }.pickerStyle(.inline)
                     }
                     LabeledContent("Calories") {
                         TextField("kcal", value: $item.calories, format: .number)
                             .keyboardType(.numberPad).multilineTextAlignment(.trailing)
+                            .font(.body.weight(.semibold))
                     }
-                    Text("P \(Int(item.proteinG))g · C \(Int(item.carbsG))g · F \(Int(item.fatG))g")
-                        .font(.caption).foregroundStyle(.secondary)
+                    HStack(spacing: Theme.Spacing.m) {
+                        macroPill("P", Int(item.proteinG), Theme.protein)
+                        macroPill("C", Int(item.carbsG), Theme.carbs)
+                        macroPill("F", Int(item.fatG), Theme.fat)
+                    }
+                    .padding(.vertical, 2)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Protein \(Int(item.proteinG)) grams, carbs \(Int(item.carbsG)) grams, fat \(Int(item.fatG)) grams")
                     if item.confidence < 0.5 {
-                        Label("Low confidence — please double-check", systemImage: "exclamationmark.triangle")
-                            .font(.caption).foregroundStyle(.orange)
+                        Label {
+                            Text("Low confidence — please double-check these numbers.")
+                                .font(.caption.weight(.medium))
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                        }
+                        .foregroundStyle(Theme.carbs)
+                        .padding(Theme.Spacing.s)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Theme.carbs.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                     }
+                } header: {
+                    Text(item.name)
                 }
             }
 
-            Button("Save \(items.count) item\(items.count == 1 ? "" : "s")") {
-                Task { await save() }
+            Section {
+                Button {
+                    Task { await save() }
+                } label: {
+                    Text("Save \(items.count) item\(items.count == 1 ? "" : "s")")
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
             }
+        }
+    }
+
+    private func macroPill(_ label: String, _ grams: Int, _ color: Color) -> some View {
+        HStack(spacing: Theme.Spacing.xs) {
+            Circle().fill(color).frame(width: 7, height: 7)
+            Text("\(label) \(grams)g")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -154,7 +263,40 @@ struct MealConfirmationList: View {
             )
             try? await repo.addMeal(meal, on: date)
         }
+        Haptics.success()
         onSave()
+    }
+}
+
+/// Friendly, centered loading view with the accent tint — used while a capture
+/// flow waits on the backend (analyze / lookup / parse) so the wait reads as
+/// intentional rather than a bare spinner.
+struct CaptureLoadingView: View {
+    let message: String
+    var systemImage: String = "sparkles"
+
+    var body: some View {
+        VStack(spacing: Theme.Spacing.l) {
+            ZStack {
+                Circle()
+                    .fill(Theme.accentTeal.opacity(0.12))
+                    .frame(width: 88, height: 88)
+                Image(systemName: systemImage)
+                    .font(.system(size: 32))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(Theme.accentTeal.gradient)
+            }
+            VStack(spacing: Theme.Spacing.s) {
+                ProgressView().tint(Theme.accentTeal)
+                Text(message)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(Theme.Spacing.xl)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(message)
     }
 }
 
@@ -170,16 +312,22 @@ struct MealPhotoEntrySheet: View {
         NavigationStack {
             Group {
                 if busy {
-                    ProgressView("Analyzing photo…")
+                    CaptureLoadingView(message: "Analyzing your photo…", systemImage: "sparkles")
                 } else if !items.isEmpty {
                     MealConfirmationList(items: $items, onSave: dismiss.callAsFunction)
                 } else {
                     VStack(spacing: Theme.Spacing.m) {
                         // Photo only leaves the device on this explicit pick (§13).
                         ImageSourcePicker(prompt: "Snap your meal") { image in
+                            Haptics.tap()
                             Task { await analyze(image) }
                         }
-                        if let error { Text(error).foregroundStyle(.red).font(.caption) }
+                        if let error {
+                            Label(error, systemImage: "exclamationmark.circle.fill")
+                                .foregroundStyle(.red).font(.caption)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, Theme.Spacing.xl)
+                        }
                     }
                 }
             }
@@ -229,17 +377,29 @@ struct BarcodeEntrySheet: View {
                         BarcodeScannerView { code in
                             guard !didScan else { return }
                             didScan = true
+                            Haptics.tap()
                             Task { await lookup(code) }
                         }
                         .ignoresSafeArea(edges: .bottom)
-                        if busy { ProgressView("Looking up product…").padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: Theme.cardRadius)) }
+                        if busy {
+                            HStack(spacing: Theme.Spacing.sm) {
+                                ProgressView().tint(Theme.accentTeal)
+                                Text("Looking up product…")
+                                    .font(.subheadline.weight(.medium))
+                            }
+                            .padding(.vertical, Theme.Spacing.sm)
+                            .padding(.horizontal, Theme.Spacing.ml)
+                            .background(.regularMaterial, in: Capsule())
+                            .shadow(color: .black.opacity(0.15), radius: 10, y: 4)
+                        }
                         if let error {
                             VStack {
                                 Spacer()
-                                Text(error).font(.caption).foregroundStyle(.white)
+                                Label(error, systemImage: "exclamationmark.circle.fill")
+                                    .font(.caption.weight(.medium)).foregroundStyle(.white)
                                     .padding(Theme.Spacing.m)
                                     .frame(maxWidth: .infinity)
-                                    .background(.red.opacity(0.85))
+                                    .background(.red.opacity(0.9))
                             }
                         }
                     }
@@ -282,16 +442,22 @@ struct LabelEntrySheet: View {
         NavigationStack {
             Group {
                 if busy {
-                    ProgressView("Reading label…")
+                    CaptureLoadingView(message: "Reading the label…", systemImage: "text.viewfinder")
                 } else if !items.isEmpty {
                     MealConfirmationList(items: $items, onSave: dismiss.callAsFunction)
                 } else {
                     VStack(spacing: Theme.Spacing.m) {
                         // OCR runs on-device; image + text leave only on this pick (§13).
                         ImageSourcePicker(prompt: "Photograph the nutrition label") { image in
+                            Haptics.tap()
                             Task { await parse(image) }
                         }
-                        if let error { Text(error).foregroundStyle(.red).font(.caption) }
+                        if let error {
+                            Label(error, systemImage: "exclamationmark.circle.fill")
+                                .foregroundStyle(.red).font(.caption)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, Theme.Spacing.xl)
+                        }
                     }
                 }
             }

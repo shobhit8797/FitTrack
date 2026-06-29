@@ -1,24 +1,47 @@
 import SwiftUI
 
 // Per-user onboarding (spec §4). Collects this user's inputs + a free-text box,
-// then calls completeOnboarding which computes targets (§5) and generates a plan
-// (§11.1) server-side. No app-wide defaults are ever applied.
+// then calls completeOnboarding which saves the profile and computes targets (§5)
+// immediately. The workout plan (§11.1) is generated asynchronously server-side
+// after this returns, so onboarding never blocks on the LLM — the user routes
+// straight to the home screen and the plan lands later (planStatus). No app-wide
+// defaults are ever applied.
 struct OnboardingFlow: View {
     let existingProfile: UserProfile?
     @Environment(FunctionsClient.self) private var functions
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var step = 0
     @State private var draft = OnboardingDraft()
     @State private var submitting = false
     @State private var error: String?
 
     private let steps = ["About you", "Body", "Goal", "Training", "Diet", "Anything else"]
+    private let stepSubtitles = [
+        "Tell us a little about yourself.",
+        "Your measurements help us set accurate targets.",
+        "What are you working towards?",
+        "How and where do you like to train?",
+        "How you eat shapes your meal plan.",
+        "Anything the coach should know before we build your plan.",
+    ]
+
+    private var isLastStep: Bool { step == steps.count - 1 }
+
+    /// Spring used for advancing/retreating between steps; crossfade-only when
+    /// Reduce Motion is on (no large horizontal slide).
+    private var stepAnimation: Animation? {
+        reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.42, dampingFraction: 0.82)
+    }
+
+    private func go(to newStep: Int) {
+        Haptics.selection()
+        withAnimation(stepAnimation) { step = newStep }
+    }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                ProgressView(value: Double(step + 1), total: Double(steps.count))
-                    .tint(Theme.accentTeal)
-                    .padding(.horizontal)
+                progressHeader
 
                 TabView(selection: $step) {
                     aboutStep.tag(0)
@@ -29,33 +52,104 @@ struct OnboardingFlow: View {
                     contextStep.tag(5)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
-                .animation(.default, value: step)
+                .animation(stepAnimation, value: step)
 
-                if let error {
-                    Text(error).font(.caption).foregroundStyle(.red).padding(.horizontal)
-                }
-
-                HStack {
-                    if step > 0 {
-                        Button("Back") { step -= 1 }.buttonStyle(.bordered)
-                    }
-                    Spacer()
-                    if step < steps.count - 1 {
-                        Button("Next") { step += 1 }
-                            .buttonStyle(.borderedProminent).tint(Theme.accentTeal)
-                    } else {
-                        Button(submitting ? "Building your plan…" : "Generate my plan") {
-                            Task { await submit() }
-                        }
-                        .buttonStyle(.borderedProminent).tint(Theme.accentTeal)
-                        .disabled(submitting)
-                    }
-                }
-                .padding()
+                footer
             }
-            .navigationTitle(steps[step])
+            .navigationTitle("Set up FitTrack")
             .navigationBarTitleDisplayMode(.inline)
         }
+    }
+
+    // MARK: Chrome
+
+    /// Step counter + branded progress bar + a large, friendly title/subtitle for
+    /// the current step. Gives a clear sense of "where am I" through the flow.
+    private var progressHeader: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text("Step \(step + 1) of \(steps.count)")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Theme.accentTeal)
+                .contentTransition(.numericText())
+
+            ProgressView(value: Double(step + 1), total: Double(steps.count))
+                .tint(Theme.accentTeal)
+
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text(steps[step])
+                    .font(.title.weight(.bold))
+                    .contentTransition(.opacity)
+                Text(stepSubtitles[step])
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityElement(children: .combine)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Theme.Spacing.ml)
+        .padding(.top, Theme.Spacing.s)
+        .padding(.bottom, Theme.Spacing.sm)
+    }
+
+    /// Bottom action bar: recoverable error, then a single obvious primary CTA
+    /// (Next / Generate my plan) plus an unobtrusive Back.
+    private var footer: some View {
+        VStack(spacing: Theme.Spacing.sm) {
+            if let error {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .transition(.opacity)
+            }
+
+            if isLastStep {
+                Button {
+                    // Flip submitting synchronously here (not inside the
+                    // async submit) so a fast double-tap is rejected before
+                    // a second Task spawns — otherwise both fire
+                    // completeOnboarding and GTMSessionFetcher warns the
+                    // request "was already running".
+                    guard !submitting else { return }
+                    Haptics.tap()
+                    submitting = true
+                    Task { await submit() }
+                } label: {
+                    if submitting {
+                        HStack(spacing: Theme.Spacing.s) {
+                            ProgressView().tint(.white)
+                            Text("Building your plan…")
+                        }
+                    } else {
+                        Label("Generate my plan", systemImage: "sparkles")
+                    }
+                }
+                .buttonStyle(PrimaryButtonStyle(enabled: !submitting))
+                .disabled(submitting)
+                .accessibilityLabel(submitting ? "Building your plan" : "Generate my plan")
+            } else {
+                Button {
+                    go(to: step + 1)
+                } label: {
+                    Text("Next")
+                }
+                .buttonStyle(PrimaryButtonStyle())
+            }
+
+            if step > 0 {
+                Button("Back") { go(to: step - 1) }
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .frame(minHeight: Theme.minTapTarget)
+                    .disabled(submitting)
+                    .accessibilityHint("Return to \(steps[step - 1])")
+            }
+        }
+        .padding(.horizontal, Theme.Spacing.ml)
+        .padding(.top, Theme.Spacing.sm)
+        .padding(.bottom, Theme.Spacing.s)
+        .animation(stepAnimation, value: error)
     }
 
     // MARK: Steps
@@ -101,9 +195,33 @@ struct OnboardingFlow: View {
             Picker("Experience", selection: $draft.experience) {
                 ForEach(["beginner", "intermediate", "advanced"], id: \.self) { Text($0.capitalized).tag($0) }
             }
-            Section("Equipment") {
-                MultiToggle(options: ["Barbell", "Dumbbell", "Machine", "Cable", "Bodyweight", "Bands"],
-                            selected: $draft.equipment)
+            Section("Where do you train?") {
+                ForEach(TrainingEnvironment.allCases) { env in
+                    let selected = draft.trainingEnvironment == env
+                    Button {
+                        Haptics.selection()
+                        draft.trainingEnvironment = env
+                    } label: {
+                        HStack(spacing: Theme.Spacing.sm) {
+                            Image(systemName: env.icon)
+                                .font(.body)
+                                .foregroundStyle(Theme.accentTeal)
+                                .frame(width: 24)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(env.label).foregroundStyle(.primary)
+                                Text(env.detail).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(Theme.accentTeal)
+                                .opacity(selected ? 1 : 0)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .tint(.primary)
+                    .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+                    .accessibilityHint(env.detail)
+                }
             }
         }
     }
@@ -137,12 +255,15 @@ struct OnboardingFlow: View {
     }
 
     private func submit() async {
-        submitting = true; error = nil
+        // submitting is set by the button tap (synchronously) to dedupe taps.
+        error = nil
         defer { submitting = false }
         do {
             _ = try await functions.completeOnboarding(profile: draft.payload)
             // RootView's profile listener will pick up the new targets and route on.
+            Haptics.success()
         } catch {
+            Haptics.error()
             self.error = error.localizedDescription
         }
     }
@@ -161,7 +282,7 @@ struct OnboardingDraft {
     var trainingDaysPerWeek = 4
     var preferredWeekdays: Set<Int> = [1, 2, 4, 5]
     var experience = "intermediate"
-    var equipment: Set<String> = ["Barbell", "Dumbbell"]
+    var trainingEnvironment: TrainingEnvironment = .gym
     var dietType = "vegetarian"
     var restrictionsText = ""
     var injuriesNotes = ""
@@ -183,7 +304,7 @@ struct OnboardingDraft {
             "trainingDaysPerWeek": trainingDaysPerWeek,
             "preferredWeekdays": Array(preferredWeekdays).sorted(),
             "experience": experience,
-            "equipment": Array(equipment),
+            "equipment": trainingEnvironment.equipment,
             "injuriesNotes": injuriesNotes,
             "freeFormContext": freeFormContext,
         ]
@@ -193,38 +314,69 @@ struct OnboardingDraft {
 struct WeekdayPicker: View {
     @Binding var selected: Set<Int>
     private let labels = ["S", "M", "T", "W", "T", "F", "S"]
+    private let fullNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
     var body: some View {
         HStack {
             ForEach(0..<7, id: \.self) { i in
                 let on = selected.contains(i)
                 Button(labels[i]) {
+                    Haptics.selection()
                     if on { selected.remove(i) } else { selected.insert(i) }
                 }
-                .frame(width: 38, height: 38)
-                .background(on ? Theme.accentTeal : Color.secondary.opacity(0.15), in: Circle())
+                .font(.subheadline.weight(.semibold))
+                .frame(width: Theme.minTapTarget, height: Theme.minTapTarget)
+                .background(on ? AnyShapeStyle(Theme.accentGradient) : AnyShapeStyle(Color.secondary.opacity(0.15)), in: Circle())
                 .foregroundStyle(on ? .white : .primary)
+                .buttonStyle(.plain)
+                .accessibilityLabel(fullNames[i])
+                .accessibilityAddTraits(on ? .isSelected : [])
             }
         }
+        .frame(maxWidth: .infinity)
     }
 }
 
-struct MultiToggle: View {
-    let options: [String]
-    @Binding var selected: Set<String>
-    var body: some View {
-        ForEach(options, id: \.self) { opt in
-            Button {
-                if selected.contains(opt) { selected.remove(opt) } else { selected.insert(opt) }
-            } label: {
-                HStack {
-                    Text(opt)
-                    Spacer()
-                    if selected.contains(opt) {
-                        Image(systemName: "checkmark").foregroundStyle(Theme.accentTeal)
-                    }
-                }
-            }
-            .tint(.primary)
+/// How the user trains, asked instead of a raw equipment checklist (friendlier,
+/// and most people think in terms of *where* they train, not which bars they own).
+/// Each case maps to the equipment tags the exercise catalog + plan prompt understand.
+enum TrainingEnvironment: String, CaseIterable, Identifiable {
+    case gym, homeGym, minimal, calisthenics
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .gym: "Full gym"
+        case .homeGym: "Home gym"
+        case .minimal: "Just the basics at home"
+        case .calisthenics: "Calisthenics"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .gym: "Barbells, machines, cables — the works"
+        case .homeGym: "Barbell, dumbbells & bands at home"
+        case .minimal: "A few dumbbells or bands, plus bodyweight"
+        case .calisthenics: "Bodyweight and a pull-up bar only"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .gym: "dumbbell.fill"
+        case .homeGym: "house.fill"
+        case .minimal: "figure.strengthtraining.traditional"
+        case .calisthenics: "figure.gymnastics"
+        }
+    }
+
+    /// Equipment tags sent to the backend (must match exercises.data equipment values).
+    var equipment: [String] {
+        switch self {
+        case .gym: ["Barbell", "Dumbbell", "Machine", "Cable", "Bodyweight", "Bands"]
+        case .homeGym: ["Barbell", "Dumbbell", "Bands", "Bodyweight"]
+        case .minimal: ["Dumbbell", "Bands", "Bodyweight"]
+        case .calisthenics: ["Bodyweight", "Bands"]
         }
     }
 }

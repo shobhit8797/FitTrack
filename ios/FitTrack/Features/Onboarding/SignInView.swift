@@ -17,15 +17,18 @@ struct SignInView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: Theme.Spacing.l) {
-                VStack(spacing: Theme.Spacing.s) {
+                VStack(spacing: Theme.Spacing.sm) {
                     Image(systemName: "flame.fill")
-                        .font(.system(size: 56))
-                        .foregroundStyle(Theme.accentTeal)
+                        .font(.system(size: 60))
+                        .foregroundStyle(Theme.accentGradient)
+                        .shadow(color: Theme.accentTeal.opacity(0.3), radius: 12, y: 6)
                     Text("FitTrack").font(.largeTitle.bold())
                     Text("Your plan, your numbers.")
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
                 .padding(.top, Theme.Spacing.xl)
+                .padding(.bottom, Theme.Spacing.s)
 
                 // Apple
                 SignInWithAppleButton(.signIn) { request in
@@ -62,12 +65,13 @@ struct SignInView: View {
                 }
                 .textFieldStyle(.roundedBorder)
 
-                Button(isSignUp ? "Create account" : "Sign in") {
+                Button {
+                    Haptics.tap()
                     Task { await submitEmail() }
+                } label: {
+                    Text(busy ? "Please wait…" : (isSignUp ? "Create account" : "Sign in"))
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Theme.accentTeal)
-                .frame(maxWidth: .infinity)
+                .buttonStyle(PrimaryButtonStyle(enabled: !(busy || email.isEmpty || password.isEmpty)))
                 .disabled(busy || email.isEmpty || password.isEmpty)
 
                 Button(isSignUp ? "Have an account? Sign in" : "New here? Create an account") {

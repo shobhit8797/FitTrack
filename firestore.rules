@@ -39,6 +39,11 @@ service cloud.firestore {
         allow read: if isOwner(uid);
         allow write: if false;
       }
+      match /dietPlans/{id}       {
+        // Diet plans are generated server-side (Lyzr agent); client reads only.
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
       match /customExercises/{id} { allow read, write: if isOwner(uid); }
     }
 

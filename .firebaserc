@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "fittrack-dev"
-  }
+    "default": "fittrack-dev-3a3c5"
+  },
+  "targets": {},
+  "etags": {}
 }

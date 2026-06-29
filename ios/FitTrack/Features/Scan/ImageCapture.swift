@@ -54,28 +54,54 @@ struct ImageSourcePicker: View {
     }
 
     var body: some View {
-        VStack(spacing: Theme.Spacing.l) {
-            EmptyStateView(systemImage: "camera.viewfinder", title: prompt,
-                           message: "Take a photo or pick one from your library.")
-            VStack(spacing: Theme.Spacing.m) {
+        VStack(spacing: Theme.Spacing.xl) {
+            Spacer(minLength: 0)
+            VStack(spacing: Theme.Spacing.ml) {
+                ZStack {
+                    Circle()
+                        .fill(Theme.accentTeal.opacity(0.12))
+                        .frame(width: 116, height: 116)
+                    Image(systemName: "camera.viewfinder")
+                        .font(.system(size: 52, weight: .regular))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(Theme.accentGradient)
+                }
+                .accessibilityHidden(true)
+                VStack(spacing: Theme.Spacing.s) {
+                    Text(prompt)
+                        .font(.title3.weight(.semibold))
+                        .multilineTextAlignment(.center)
+                    Text("Take a photo or pick one from your library.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+            }
+            VStack(spacing: Theme.Spacing.sm) {
                 if cameraAvailable {
                     Button {
+                        Haptics.tap()
                         showCamera = true
                     } label: {
                         Label("Take photo", systemImage: "camera.fill")
-                            .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.accentTeal)
+                    .buttonStyle(PrimaryButtonStyle())
+                    .accessibilityHint("Opens the camera")
                 }
                 PhotosPicker(selection: $pickerItem, matching: .images) {
                     Label("Choose from library", systemImage: "photo.on.rectangle")
+                        .font(.body.weight(.medium))
                         .frame(maxWidth: .infinity)
+                        .frame(minHeight: Theme.minTapTarget)
                 }
                 .buttonStyle(.bordered)
+                .tint(Theme.accentTeal)
             }
             .padding(.horizontal, Theme.Spacing.xl)
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, Theme.Spacing.l)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .fullScreenCover(isPresented: $showCamera) {
             CameraPicker { image in
                 if let image { onImage(image) }

@@ -23,6 +23,32 @@ export interface WorkoutPlanResult {
   days: PlanDay[];
 }
 
+export interface DietFoodItem {
+  name: string;
+  servingDescription: string;
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+}
+export interface DietMeal {
+  mealLabel: string;
+  order: number;
+  items: DietFoodItem[];
+}
+export interface DietPlanResult {
+  planName: string;
+  summary: string;
+  dailyCalories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  meals: DietMeal[];
+  hydrationNote: string;
+  groceryList: string[];
+  notes: string;
+}
+
 export interface FoodItem {
   name: string;
   dishKey: string;
@@ -90,6 +116,49 @@ export function validatePlan(v: unknown): WorkoutPlanResult {
         }),
       };
     }),
+  };
+}
+
+export function validateDietPlan(v: unknown): DietPlanResult {
+  if (!isObj(v) || !Array.isArray(v.meals)) {
+    throw new LLMError('AI diet plan missing meals', undefined, false);
+  }
+  const meals: DietMeal[] = v.meals.map((m, mi) => {
+    const meal = isObj(m) ? m : {};
+    const items = Array.isArray(meal.items) ? meal.items : [];
+    return {
+      mealLabel: str(meal.mealLabel, `Meal ${mi + 1}`),
+      order: num(meal.order, mi),
+      items: items.map((it) => {
+        const x = isObj(it) ? it : {};
+        return {
+          name: str(x.name, 'Food'),
+          servingDescription: str(x.servingDescription),
+          calories: Math.round(num(x.calories)),
+          proteinG: num(x.proteinG),
+          carbsG: num(x.carbsG),
+          fatG: num(x.fatG),
+        };
+      }),
+    };
+  });
+  // Prefer the agent's stated totals; fall back to summing the items so the UI
+  // always has a sane daily figure even if the agent omits the rollup.
+  const sum = (pick: (i: DietFoodItem) => number) =>
+    meals.reduce((acc, m) => acc + m.items.reduce((a, it) => a + pick(it), 0), 0);
+  return {
+    planName: str(v.planName, 'Your Meal Plan'),
+    summary: str(v.summary),
+    dailyCalories: Math.round(num(v.dailyCalories, sum((i) => i.calories))),
+    proteinG: Math.round(num(v.proteinG, sum((i) => i.proteinG))),
+    carbsG: Math.round(num(v.carbsG, sum((i) => i.carbsG))),
+    fatG: Math.round(num(v.fatG, sum((i) => i.fatG))),
+    meals,
+    hydrationNote: str(v.hydrationNote),
+    groceryList: Array.isArray(v.groceryList)
+      ? v.groceryList.filter((s): s is string => typeof s === 'string')
+      : [],
+    notes: str(v.notes),
   };
 }
 

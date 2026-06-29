@@ -37,14 +37,30 @@ final class FunctionsClient {
     }
 
     // MARK: Onboarding / targets
+    // completeOnboarding now returns only the computed targets — the workout plan
+    // is generated asynchronously server-side and streamed in via the profile's
+    // planStatus + Repository.planStream(), so onboarding never blocks on the LLM.
     struct OnboardingResult: Decodable {
         let targets: Targets
-        let plan: WorkoutPlan?
-        let planError: String?
     }
 
     func completeOnboarding(profile: [String: Any]) async throws -> OnboardingResult {
         try await call("completeOnboarding", ["profile": profile], as: OnboardingResult.self)
+    }
+
+    /// Request (or re-request) workout / diet plan generation. Flips the relevant
+    /// *PlanStatus to "generating" server-side; the async trigger runs the matching
+    /// Lyzr agent and streams the plan + status back into the profile.
+    struct WorkoutPlanStatusResult: Decodable { let workoutPlanStatus: String }
+    @discardableResult
+    func generateWorkoutPlan() async throws -> String {
+        try await call("generateWorkoutPlan", [:], as: WorkoutPlanStatusResult.self).workoutPlanStatus
+    }
+
+    struct DietPlanStatusResult: Decodable { let dietPlanStatus: String }
+    @discardableResult
+    func generateDietPlan() async throws -> String {
+        try await call("generateDietPlan", [:], as: DietPlanStatusResult.self).dietPlanStatus
     }
 
     struct TargetsResult: Decodable { let targets: Targets }

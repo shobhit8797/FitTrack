@@ -8,6 +8,7 @@ import SwiftUI
 // every chart, and EmptyStateView whenever a series has no data.
 struct ProgressDashboardView: View {
     @Environment(Repository.self) private var repo
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var weights: [WeightEntry] = []
     @State private var dayLogs: [DayLog] = []
     @State private var sessions: [WorkoutSession] = []
@@ -24,6 +25,7 @@ struct ProgressDashboardView: View {
                         ForEach(ChartRange.allCases) { Text($0.label).tag($0) }
                     }
                     .pickerStyle(.segmented)
+                    .onChange(of: range) { Haptics.selection() }
 
                     weightCard
                     caloriesCard
@@ -54,8 +56,8 @@ struct ProgressDashboardView: View {
 
     private var weightCard: some View {
         Card {
-            VStack(alignment: .leading) {
-                Text("Weight").font(.headline)
+            VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+                SectionHeader("Weight")
                 if filteredWeights.isEmpty {
                     EmptyStateView(systemImage: "scalemass", title: "No weight data",
                                    message: "Log your weight to see trends.")
@@ -115,8 +117,8 @@ struct ProgressDashboardView: View {
 
     private var caloriesCard: some View {
         Card {
-            VStack(alignment: .leading) {
-                Text("Calories vs target").font(.headline)
+            VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+                SectionHeader("Calories vs target")
                 if filteredLogs.isEmpty {
                     EmptyStateView(systemImage: "flame", title: "No calorie data",
                                    message: "Log meals to see daily calories against your target.")
@@ -161,8 +163,8 @@ struct ProgressDashboardView: View {
 
     private var macrosCard: some View {
         Card {
-            VStack(alignment: .leading) {
-                Text("Macro adherence").font(.headline)
+            VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+                SectionHeader("Macro adherence")
                 Text("Protein highlighted; carbs and fat shown for context.")
                     .font(.caption).foregroundStyle(.secondary)
                 if filteredLogs.isEmpty {
@@ -253,7 +255,7 @@ struct ProgressDashboardView: View {
     private var workoutHeatmapCard: some View {
         Card {
             VStack(alignment: .leading, spacing: Theme.Spacing.s) {
-                Text("Workout adherence").font(.headline)
+                SectionHeader("Workout adherence")
                 if filteredSessions.isEmpty {
                     EmptyStateView(systemImage: "calendar", title: "No workouts logged",
                                    message: "Log a session to build your training calendar.")
@@ -272,7 +274,11 @@ struct ProgressDashboardView: View {
 
     private func statTile(value: String, label: String) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            Text(value).font(.title2.bold()).foregroundStyle(Theme.accentTeal)
+            Text(value)
+                .font(.title2.bold())
+                .foregroundStyle(Theme.accentTeal)
+                .contentTransition(.numericText())
+                .animation(reduceMotion ? nil : .snappy, value: value)
             Text(label).font(.caption).foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .combine)
@@ -407,7 +413,7 @@ struct ProgressDashboardView: View {
     private var liftProgressionCard: some View {
         Card {
             VStack(alignment: .leading, spacing: Theme.Spacing.s) {
-                Text("Per-lift progression").font(.headline)
+                SectionHeader("Per-lift progression")
                 if liftNames.isEmpty {
                     EmptyStateView(systemImage: "dumbbell", title: "No lifts logged",
                                    message: "Log sets in a workout to track strength over time.")
@@ -416,6 +422,7 @@ struct ProgressDashboardView: View {
                         ForEach(liftNames, id: \.self) { Text($0).tag(Optional($0)) }
                     }
                     .pickerStyle(.menu)
+                    .onChange(of: resolvedLift) { Haptics.selection() }
 
                     let series = liftProgression(for: resolvedLift)
                     if series.isEmpty {

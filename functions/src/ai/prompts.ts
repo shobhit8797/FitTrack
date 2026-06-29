@@ -37,6 +37,75 @@ equipment=${i.equipment}, dietType=${i.dietType}, restrictions=${i.restrictions}
 injuries/notes="${i.injuriesNotes}", extraContext="${i.freeFormContext}".`;
 }
 
+// ---- Lyzr one-shot message builders ----
+// The Lyzr agents are configured for markdown output and to ask clarifying
+// questions when inputs are missing. For a one-shot server-side generation we
+// override that per request: supply every input, forbid follow-up questions, and
+// demand strict JSON in the exact schema the validators expect. The tolerant
+// parser (parseJson) strips any stray fences the agent adds anyway.
+
+const WORKOUT_JSON_SCHEMA = `{ "splitName":string, "summary":string, "scheduledWeekdays":[int 0-6, 0=Sun],
+  "days":[ { "dayLabel":string, "order":int,
+    "exercises":[ {"name":string,"sets":int,"repRange":string,"notes":string,"order":int} ] } ] }`;
+
+/** One-shot workout-plan message for the Lyzr Fitness Architect agent. */
+export function workoutMessage(i: PlanPromptInputs): string {
+  return `Design a complete weekly workout plan for this client. You have ALL the information you need — do NOT ask any clarifying questions.
+
+Client: sex=${i.sex}, age=${i.age}, height=${i.heightCm}cm, weight=${i.weightKg}kg, goal=${i.goal},
+trainingDaysPerWeek=${i.trainingDaysPerWeek}, preferredWeekdays=${i.preferredWeekdays}, experience=${i.experience},
+equipment=${i.equipment}, dietType=${i.dietType}, restrictions=${i.restrictions},
+injuries/notes="${i.injuriesNotes}", extraContext="${i.freeFormContext}".
+
+Rules: match the training-day count exactly; assign each day a clear label; favor compound lifts;
+put progressive-overload guidance in each exercise's notes; respect equipment, experience, and injuries;
+reference exercises by common names so they map to an exercise catalog; set scheduledWeekdays from preferredWeekdays.
+
+Respond with STRICT JSON ONLY — no prose, no markdown, no code fences — matching exactly this schema:
+${WORKOUT_JSON_SCHEMA}`;
+}
+
+export interface DietPromptInputs {
+  sex: string;
+  age: number;
+  heightCm: number;
+  weightKg: number;
+  goal: string;
+  activityLevel: string;
+  dietType: string;
+  restrictions: string;
+  freeFormContext: string;
+  // Deterministic targets computed server-side (spec §5) — the agent must build
+  // the day to hit these, not invent its own numbers.
+  calorieTarget: number;
+  proteinTargetG: number;
+  carbTargetG: number;
+  fatTargetG: number;
+}
+
+const DIET_JSON_SCHEMA = `{ "planName":string, "summary":string,
+  "dailyCalories":int, "proteinG":int, "carbsG":int, "fatG":int,
+  "meals":[ { "mealLabel":string, "order":int,
+    "items":[ {"name":string,"servingDescription":string,"calories":int,"proteinG":number,"carbsG":number,"fatG":number} ] } ],
+  "hydrationNote":string, "groceryList":[string], "notes":string }`;
+
+/** One-shot diet-plan message for the Lyzr Nutrition Architect agent. */
+export function dietMessage(i: DietPromptInputs): string {
+  return `Design a complete daily meal plan for this client. You have ALL the information you need — do NOT ask any clarifying questions.
+
+Client: sex=${i.sex}, age=${i.age}, height=${i.heightCm}cm, weight=${i.weightKg}kg, goal=${i.goal},
+activityLevel=${i.activityLevel}, dietType=${i.dietType}, restrictions=${i.restrictions}, extraContext="${i.freeFormContext}".
+
+Hit these pre-computed daily targets (do not recompute them): calories=${i.calorieTarget} kcal,
+protein=${i.proteinTargetG}g, carbs=${i.carbTargetG}g, fat=${i.fatTargetG}g. The sum of all meal items
+should land close to these targets. Respect the diet type and restrictions strictly. Build realistic,
+culturally appropriate meals with specific portions; set dailyCalories/proteinG/carbsG/fatG to the
+plan's actual totals; include a hydration note, a grocery list, and brief adherence notes.
+
+Respond with STRICT JSON ONLY — no prose, no markdown, no code fences — matching exactly this schema:
+${DIET_JSON_SCHEMA}`;
+}
+
 // ---- 11.2 Food photo analysis ----
 export const MEAL_PHOTO_SYSTEM = `You are a nutrition estimation assistant with strong knowledge of Indian vegetarian cuisine
 (dal, paneer, soya/tofu, sabzi, rice, roti, dosa, etc.) as well as global foods. Identify

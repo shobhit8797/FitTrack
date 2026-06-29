@@ -1,27 +1,6 @@
 {
   "indexes": [
     {
-      "collectionGroup": "weightEntries",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "date", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "workoutSessions",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "date", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "meals",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "loggedAt", "order": "ASCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "ifctFoods",
       "queryScope": "COLLECTION",
       "fields": [

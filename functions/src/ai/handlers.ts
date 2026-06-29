@@ -6,39 +6,15 @@ import { parseJson } from './json';
 import {
   LABEL_SYSTEM,
   MEAL_PHOTO_SYSTEM,
-  PLAN_SYSTEM,
-  PlanPromptInputs,
   TEXT_ESTIMATE_SYSTEM,
-  planUser,
 } from './prompts';
 import {
   validateFoodAnalysis,
   validateLabel,
-  validatePlan,
 } from './schemas';
 import { ImagePart } from './types';
 
 const callOpts = { secrets: AI_SECRETS, timeoutSeconds: 120, memory: '512MiB' as const };
-
-/** POST /ai/generate-plan — workout plan generation (spec §11.1). */
-export const generatePlan = onCall(callOpts, async (req) => {
-  requireUid(req);
-  try {
-    const inputs = req.data?.inputs as PlanPromptInputs;
-    if (!inputs) throw new Error('inputs required');
-    const provider = makeProvider();
-    const res = await provider.complete({
-      system: PLAN_SYSTEM,
-      user: planUser(inputs),
-      jsonObject: true,
-      temperature: 0.5,
-      maxTokens: 3000,
-    });
-    return { plan: validatePlan(parseJson(res.text)), model: res.model };
-  } catch (err) {
-    throw toHttpsError(err);
-  }
-});
 
 /** POST /ai/analyze-meal — photo analysis + IFCT grounding (spec §11.2 / §7.3). */
 export const analyzeMeal = onCall(callOpts, async (req) => {

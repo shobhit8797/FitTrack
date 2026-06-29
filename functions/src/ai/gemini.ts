@@ -39,13 +39,39 @@ export class GeminiProvider implements LLMProvider {
     });
 
     const json = (await res.json()) as {
-      candidates?: { content?: { parts?: { text?: string }[] } }[];
+      candidates?: {
+        content?: { parts?: { text?: string }[] };
+        finishReason?: string;
+      }[];
+      promptFeedback?: { blockReason?: string };
       error?: { message?: string };
     };
     if (json.error) throw new LLMError(`Gemini error: ${json.error.message}`, res.status);
 
-    const text = json.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('');
-    if (!text) throw new LLMError('Gemini returned no content', res.status);
+    // A blocked prompt returns no candidates — surface why so it's debuggable.
+    if (json.promptFeedback?.blockReason) {
+      throw new LLMError(
+        `Gemini blocked the prompt (${json.promptFeedback.blockReason})`,
+        res.status,
+      );
+    }
+
+    const candidate = json.candidates?.[0];
+    const text = candidate?.content?.parts?.map((p) => p.text ?? '').join('');
+    if (!text) {
+      throw new LLMError(
+        `Gemini returned no content (finishReason=${candidate?.finishReason ?? 'none'})`,
+        res.status,
+      );
+    }
+    // MAX_TOKENS means the JSON is truncated and will fail to parse — fail loud
+    // with an actionable message instead of a cryptic JSON error downstream.
+    if (candidate?.finishReason === 'MAX_TOKENS') {
+      throw new LLMError(
+        'Gemini response truncated (MAX_TOKENS) — raise maxTokens for this task.',
+        res.status,
+      );
+    }
 
     return { text, model: this.model, provider: this.name };
   }

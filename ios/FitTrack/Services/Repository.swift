@@ -11,7 +11,7 @@ final class Repository {
     private let db = Firestore.firestore()
 
     private var uid: String? { Auth.auth().currentUser?.uid }
-    private func userDoc() throws -> DocumentReference {
+    func userDoc() throws -> DocumentReference {
         guard let uid else { throw RepoError.notSignedIn }
         return db.collection("users").document(uid)
     }
@@ -125,6 +125,49 @@ final class Repository {
         let snap = try await userDoc().collection("workoutPlans").document("current").getDocument()
         guard snap.exists else { return nil }
         return try snap.data(as: WorkoutPlan.self)
+    }
+
+    /// Live current-plan updates. The plan is generated asynchronously after
+    /// onboarding, so the Workout tab streams it in rather than fetching once.
+    func planStream() -> AsyncThrowingStream<WorkoutPlan?, Error> {
+        AsyncThrowingStream { continuation in
+            guard let uid else {
+                continuation.finish(throwing: RepoError.notSignedIn); return
+            }
+            let reg = db.collection("users").document(uid)
+                .collection("workoutPlans").document("current")
+                .addSnapshotListener { snap, err in
+                    if let err { continuation.finish(throwing: err); return }
+                    let plan = try? snap?.data(as: WorkoutPlan.self)
+                    continuation.yield(plan)
+                }
+            continuation.onTermination = { _ in reg.remove() }
+        }
+    }
+
+    // MARK: Diet plan
+    func fetchCurrentDietPlan() async throws -> DietPlan? {
+        let snap = try await userDoc().collection("dietPlans").document("current").getDocument()
+        guard snap.exists else { return nil }
+        return try snap.data(as: DietPlan.self)
+    }
+
+    /// Live current diet-plan updates. Generated asynchronously after the user
+    /// requests it, so the Diet tab streams it in rather than fetching once.
+    func dietPlanStream() -> AsyncThrowingStream<DietPlan?, Error> {
+        AsyncThrowingStream { continuation in
+            guard let uid else {
+                continuation.finish(throwing: RepoError.notSignedIn); return
+            }
+            let reg = db.collection("users").document(uid)
+                .collection("dietPlans").document("current")
+                .addSnapshotListener { snap, err in
+                    if let err { continuation.finish(throwing: err); return }
+                    let plan = try? snap?.data(as: DietPlan.self)
+                    continuation.yield(plan)
+                }
+            continuation.onTermination = { _ in reg.remove() }
+        }
     }
 
     func addSession(_ session: WorkoutSession) async throws {

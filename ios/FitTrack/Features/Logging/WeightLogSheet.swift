@@ -42,6 +42,7 @@ struct WeightLogSheet: View {
                 note: note.isEmpty ? nil : note
             ))
             if writeToHealth { try? await health.writeBodyMass(kg: weightKg, date: date) }
+            Haptics.success()
             dismiss()
         } catch {
             self.error = error.localizedDescription

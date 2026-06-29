@@ -2,15 +2,43 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>REPLACE_WITH_REVERSED_GOOGLE_CLIENT_ID</string>
+				<string>com.googleusercontent.apps.656562200709-e7d4ppc0qlgef532589mj0opg3219iub</string>
 			</array>
 		</dict>
 	</array>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NSCameraUsageDescription</key>
+	<string>FitTrack uses the camera to scan barcodes and photograph meals and nutrition labels for logging.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>FitTrack reads your steps, active energy, exercise minutes, and body mass to show daily activity and weight trends. This data stays on your device.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>FitTrack can optionally save your logged weight and dietary energy back to Apple Health.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>FitTrack lets you pick a meal photo from your library to estimate its nutrition.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 </dict>

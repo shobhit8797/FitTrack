@@ -16,5 +16,9 @@
     <true/>
     <key>uploadSymbols</key>
     <true/>
+    <key>apiKey</key>
+    <string>GQ653NHYST</string>
+    <key>apiIssuer</key>
+    <string>263d00d5-4518-4789-886d-018f6c735afe</string>
 </dict>
 </plist>

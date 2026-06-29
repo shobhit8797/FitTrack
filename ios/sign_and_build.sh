@@ -12,6 +12,25 @@ EXPORT_PLIST="$PROJECT_DIR/ExportOptions.plist"
 
 TEAM_ID="7MFYAGK3VV"
 BUNDLE_ID="com.shobhit.fittrack"
+API_KEY_ID="GQ653NHYST"
+API_KEY_SRC="$HOME/Downloads/AuthKey_${API_KEY_ID}.p8"
+API_KEY_DIR="$HOME/.appstoreconnect/private_keys"
+API_KEY_DEST="$API_KEY_DIR/AuthKey_${API_KEY_ID}.p8"
+
+echo "==> Installing App Store Connect API key..."
+if [ ! -f "$API_KEY_DEST" ]; then
+    if [ ! -f "$API_KEY_SRC" ]; then
+        echo "ERROR: API key not found at $API_KEY_SRC"
+        exit 1
+    fi
+    mkdir -p "$API_KEY_DIR"
+    chmod 700 "$API_KEY_DIR"
+    cp "$API_KEY_SRC" "$API_KEY_DEST"
+    chmod 600 "$API_KEY_DEST"
+    echo "  Copied to $API_KEY_DEST"
+else
+    echo "  Already present at $API_KEY_DEST"
+fi
 
 echo "==> Verifying Distribution certificate..."
 security find-identity -v -p codesigning | grep "Apple Distribution.*7MFYAGK3VV" || {
@@ -32,6 +51,9 @@ xcodebuild archive \
     -archivePath "$ARCHIVE_PATH" \
     -derivedDataPath "$OUTPUT_DIR/DerivedData" \
     -allowProvisioningUpdates \
+    -authenticationKeyPath "$API_KEY_DEST" \
+    -authenticationKeyID "$API_KEY_ID" \
+    -authenticationKeyIssuerID "263d00d5-4518-4789-886d-018f6c735afe" \
     DEVELOPMENT_TEAM="$TEAM_ID" \
     PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
     2>&1 | tee "$OUTPUT_DIR/build.log" \
@@ -50,6 +72,9 @@ xcodebuild -exportArchive \
     -exportPath "$IPA_DIR" \
     -exportOptionsPlist "$EXPORT_PLIST" \
     -allowProvisioningUpdates \
+    -authenticationKeyPath "$API_KEY_DEST" \
+    -authenticationKeyID "$API_KEY_ID" \
+    -authenticationKeyIssuerID "263d00d5-4518-4789-886d-018f6c735afe" \
     2>&1 | tee -a "$OUTPUT_DIR/build.log" \
     | grep -E "(Export|Upload|error:|warning:|\*\*)" || true
 

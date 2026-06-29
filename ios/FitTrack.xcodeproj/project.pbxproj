@@ -26,6 +26,7 @@
 		93893607FBB9FA387E85B4F8 /* ProgressDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 426EB103A3E171CA32917EE7 /* ProgressDashboardView.swift */; };
 		9567E28132312B6DA78D2075 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 2255B64423771535B6F445DB /* GoogleService-Info.plist */; };
 		969700593FCEBEEEABACF313 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2EDD15CCE63BAC521529DB6 /* Theme.swift */; };
+		976B243A0D675B99B8D52117 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 21062746B7E486B1CE18E6BF /* Assets.xcassets */; };
 		A0D7A41F077FC6C72967445B /* OnboardingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 682A6BB911DFEFA03A71395D /* OnboardingFlow.swift */; };
 		B1ECB0367A81767B919A7FA2 /* ImageCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70A3B0BA0F18A36A78A9BDCF /* ImageCapture.swift */; };
 		BAF2E6C04A28239FA47C916B /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 9694463A051FA3AE578C11DF /* FirebaseAuth */; };
@@ -40,10 +41,11 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		053108AC8BBB9B65EBA44741 /* FitTrack.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FitTrack.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		053108AC8BBB9B65EBA44741 /* FitTrack.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = FitTrack.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		125578C49FC616DBEE8F83AF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		17C445757687460D3D720600 /* FunctionsClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FunctionsClient.swift; sourceTree = "<group>"; };
 		202BD2FD19604EA1CB6F64F7 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		21062746B7E486B1CE18E6BF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		2255B64423771535B6F445DB /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		2391498B803382A851145E4D /* BarcodeScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarcodeScannerView.swift; sourceTree = "<group>"; };
 		2E3D96BC9C62C96E4CE4ADA9 /* Domain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Domain.swift; sourceTree = "<group>"; };
@@ -169,6 +171,7 @@
 		9FB3C778B1465DF47506BDE5 /* FitTrack */ = {
 			isa = PBXGroup;
 			children = (
+				21062746B7E486B1CE18E6BF /* Assets.xcassets */,
 				2255B64423771535B6F445DB /* GoogleService-Info.plist */,
 				125578C49FC616DBEE8F83AF /* Info.plist */,
 				9B6942028129A3B4EE98E28C /* App */,
@@ -273,6 +276,11 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					D255A6C7D5D446F750DA7FED = {
+						DevelopmentTeam = 7MFYAGK3VV;
+					};
+				};
 			};
 			buildConfigurationList = 2DE973B4615ED6F7AD148BC7 /* Build configuration list for PBXProject "FitTrack" */;
 			developmentRegion = en;
@@ -302,6 +310,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				976B243A0D675B99B8D52117 /* Assets.xcassets in Resources */,
 				9567E28132312B6DA78D2075 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -347,28 +356,18 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 7MFYAGK3VV;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = FitTrack/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = com.fittrack.FitTrackApp;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
-				INFOPLIST_KEY_NSCameraUsageDescription = "FitTrack uses the camera to scan barcodes and photograph meals and nutrition labels for logging.";
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "FitTrack reads your steps, active energy, exercise minutes, and body mass to show daily activity and weight trends. This data stays on your device.";
-				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "FitTrack can optionally save your logged weight and dietary energy back to Apple Health.";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "FitTrack lets you pick a meal photo from your library to estimate its nutrition.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.shobhit.fittrack;
-				PROVISIONING_PROFILE_SPECIFIER = "";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.fittrack.FitTrack;
 				SDKROOT = iphoneos;
-				SKIP_INSTALL = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
@@ -497,25 +496,17 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 7MFYAGK3VV;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = FitTrack/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = com.fittrack.FitTrackApp;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
-				INFOPLIST_KEY_NSCameraUsageDescription = "FitTrack uses the camera to scan barcodes and photograph meals and nutrition labels for logging.";
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "FitTrack reads your steps, active energy, exercise minutes, and body mass to show daily activity and weight trends. This data stays on your device.";
-				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "FitTrack can optionally save your logged weight and dietary energy back to Apple Health.";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "FitTrack lets you pick a meal photo from your library to estimate its nutrition.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.shobhit.fittrack;
-				PROVISIONING_PROFILE_SPECIFIER = "";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.fittrack.FitTrack;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;

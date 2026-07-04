@@ -11,39 +11,44 @@
 ```bash
 xcodegen generate   # run from ios/
 ```
+Also required after **adding/removing source files** — the project references files explicitly.
 
-### Build + upload to TestFlight
+### Build & run locally (simulator)
+```bash
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer   # if xcode-select points at CommandLineTools
+cd ios
+xcodebuild -project FitTrack.xcodeproj -scheme FitTrack \
+  -destination 'platform=iOS Simulator,name=iPhone 17' \
+  -configuration Debug CODE_SIGNING_ALLOWED=NO build
+xcrun simctl boot "iPhone 17" 2>/dev/null; open -a Simulator
+xcrun simctl install "iPhone 17" ~/Library/Developer/Xcode/DerivedData/FitTrack-*/Build/Products/Debug-iphonesimulator/FitTrack.app
+xcrun simctl launch "iPhone 17" com.fittrack.FitTrack
+```
+- Requires `ios/FitTrack/GoogleService-Info.plist` (gitignored — copy between machines manually).
+- On the lappy Mac use the **iPhone 17** simulator; the iPhone 17 Pro sim fails to boot there.
+- Or just open `ios/FitTrack.xcodeproj` in Xcode, pick an iPhone simulator destination, Cmd+R.
+
+### Build + upload to TestFlight (one command)
 ```bash
 cd ios && bash sign_and_build.sh
 ```
 - Authenticates with App Store Connect API key — **no Apple ID needs to be signed in to Xcode**
+- Auto-selects the full Xcode toolchain even if `xcode-select` points at CommandLineTools
+- **Auto-bumps** `CURRENT_PROJECT_VERSION` (queries App Store Connect for the latest uploaded build; falls back to local increment if offline) and runs `xcodegen generate` itself
 - Archives, exports, and uploads in one step
-- Before running, bump `CURRENT_PROJECT_VERSION` in `project.yml` (must be higher than last uploaded build)
 
 ### Check TestFlight build processing status
 ```bash
-python3 -c "
-import jwt, time, json, urllib.request
-KEY_ID = 'GQ653NHYST'
-ISSUER_ID = '263d00d5-4518-4789-886d-018f6c735afe'
-APP_ID = '6785555577'
-with open('/Users/shobhit/.appstoreconnect/private_keys/AuthKey_GQ653NHYST.p8') as f:
-    key = f.read()
-token = jwt.encode({'iss': ISSUER_ID, 'iat': int(time.time()), 'exp': int(time.time()) + 1200, 'aud': 'appstoreconnect-v1'}, key, algorithm='ES256', headers={'kid': KEY_ID})
-url = f'https://api.appstoreconnect.apple.com/v1/builds?filter[app]={APP_ID}&sort=-uploadedDate&limit=3&fields[builds]=version,uploadedDate,processingState'
-req = urllib.request.Request(url, headers={'Authorization': f'Bearer {token}'})
-with urllib.request.urlopen(req) as r: data = json.loads(r.read())
-for b in data['data']:
-    a = b['attributes']
-    print(f\"Build {a['version']} | {a['processingState']} | {a['uploadedDate']}\")
-"
+bash ios/check_status.sh
 ```
+(Wraps `ios/asc_builds.py`. Requires `python3 -m pip install --user PyJWT cryptography` once per machine.)
 
 ### Key credentials (all stored locally)
 | What | Where |
 |------|-------|
 | App Store Connect API key (.p8) | `~/.appstoreconnect/private_keys/AuthKey_GQ653NHYST.p8` |
-| Backup of certs + profile | `~/Desktop/FitTrack_Certs/` |
+| Backup of certs + profile | `~/Desktop/FitTrack_Certs/` (also in `~/Downloads/FitTrack_Certs/` on the lappy Mac) |
+| Firebase functions env (agent IDs) | `functions/.env` (gitignored — copy between machines manually) |
 | Apple Distribution cert | Keychain: `Apple Distribution: subrahmanya s hegde (7MFYAGK3VV)` |
 | Provisioning profile | `~/Library/MobileDevice/Provisioning Profiles/e4bac8c2-341b-45d8-8015-c77465c1dd5b.mobileprovision` (expires 2027) |
 
@@ -57,6 +62,29 @@ for b in data['data']:
 | API Key ID | GQ653NHYST |
 | Issuer ID | 263d00d5-4518-4789-886d-018f6c735afe |
 
+## Backend deploy (Cloud Functions)
+```bash
+cd functions
+npm run deploy        # = tsc build + firebase deploy --only functions
+```
+- Runtime is **Node 22** (`firebase.json` + `functions/package.json` engines).
+- Needs `functions/.env` with: `PROVIDER`, `MODEL_GEMINI`, `MODEL_OPENROUTER`, `LYZR_WORKOUT_AGENT_ID`, `LYZR_DIET_AGENT_ID`, `LYZR_BASE_URL` (gitignored — copy between machines). Deploy fails non-interactively without it.
+- Needs a logged-in Firebase CLI: `npx firebase-tools login` (interactive terminal only). Project: `fittrack-dev-3a3c5`.
+- After changing agent prompts/schemas, users must **Regenerate** their plan (Settings → Plans in the app) to see the new output — existing Firestore plans are not migrated.
+
+## One-time machine setup (to build & publish from a new Mac)
+1. Install Xcode + `brew install xcodegen`; run `xcodegen generate` in `ios/`.
+2. Copy from an existing release machine (all gitignored/secret):
+   - `ios/FitTrack/GoogleService-Info.plist`
+   - `functions/.env`
+   - `~/.appstoreconnect/private_keys/AuthKey_GQ653NHYST.p8`
+   - `FitTrack_Certs/` backup folder (p12 + provisioning profile)
+3. Import the signing cert: `security import AppleDistribution_7MFYAGK3VV.p12 -k ~/Library/Keychains/login.keychain-db -T /usr/bin/codesign` (prompts for the p12 password).
+4. If `security find-identity -v -p codesigning` shows **0 valid identities**, the Apple WWDR G3 intermediate is missing: download `https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer` and `security import` it.
+5. Install the profile: `cp FitTrack_AppStore_7MFYAGK3VV.mobileprovision ~/Library/MobileDevice/"Provisioning Profiles"/<UUID>.mobileprovision` (UUID via `security cms -D -i <profile> | plutil -extract UUID raw -o - -`).
+6. `python3 -m pip install --user PyJWT cryptography` (for the build-number auto-bump + status script).
+7. `npx firebase-tools login` for backend deploys.
+
 ## Important notes
 - `PRODUCT_BUNDLE_IDENTIFIER` in `project.yml` stays as `com.fittrack.FitTrack` — the build script overrides it to `com.shobhit.fittrack` at build time. **Do not change this.**
 - Xcode GUI shows a signing warning (no provisioning profile) — this is expected and harmless; the script uses API key auth, not Xcode GUI signing.
@@ -65,8 +93,9 @@ for b in data['data']:
 - App icon lives at `ios/FitTrack/Assets.xcassets/AppIcon.appiconset/` — currently a placeholder blue icon; replace with real artwork before public release.
 
 ## Releasing a new build (checklist)
-1. Bump `CURRENT_PROJECT_VERSION` in `ios/project.yml` (e.g. "2" → "3")
-2. Run `xcodegen generate` from `ios/`
-3. Run `bash sign_and_build.sh` from `ios/`
-4. Wait ~15 min, then check status with the command above
-5. Go to appstoreconnect.apple.com → FitTrack → TestFlight to distribute
+1. If backend changed: `cd functions && npm run deploy`
+2. Run `bash sign_and_build.sh` from `ios/` (bumps the build number + regenerates the project itself)
+3. Wait ~15 min, then `bash ios/check_status.sh` — build shows `VALID` when processed
+4. Distribute on appstoreconnect.apple.com → **Log Fitness** → TestFlight:
+   - Internal testers: add the build to an internal group — available immediately.
+   - External testers: add to an external group (first build per version needs Apple's Beta App Review, ~1 day) or share the group's **Public Link**. Testers install the TestFlight app, then FitTrack.

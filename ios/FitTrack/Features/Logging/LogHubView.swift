@@ -2,10 +2,13 @@ import SwiftUI
 import UIKit
 
 // Log hub (spec §8): the ➕ entry point — photo / barcode / manual / weight.
-// AI/DB estimates always land in an editable confirmation sheet (§7.3) — never
-// auto-saved.
+// A half-height grid of big tappable tiles (each with its own hue) instead of a
+// full-screen list: quick capture should feel like a launcher, not a settings
+// page. AI/DB estimates always land in an editable confirmation sheet (§7.3) —
+// never auto-saved.
 struct LogHubView: View {
     @Environment(Repository.self) private var repo
+    @Environment(\.dismiss) private var dismiss
     @State private var route: LogRoute?
     // Workout logging: stream the plan so we can offer its days, then log a
     // session against the chosen day.
@@ -13,23 +16,44 @@ struct LogHubView: View {
     @State private var workoutDay: WorkoutDay?
     @State private var showWorkoutPicker = false
 
+    private let columns = [GridItem(.flexible(), spacing: Theme.Spacing.sm),
+                           GridItem(.flexible(), spacing: Theme.Spacing.sm)]
+
     var body: some View {
         NavigationStack {
-            List {
-                Section("Food") {
-                    row("camera.fill", "Photo", "Snap a meal — AI estimates macros") { route = .photo }
-                    row("barcode.viewfinder", "Barcode", "Scan a packaged product") { route = .barcode }
-                    row("text.viewfinder", "Label", "Photograph a nutrition label") { route = .label }
-                    row("pencil", "Describe / manual", "Type what you ate") { route = .text }
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+                    gridHeader("Food")
+                    LazyVGrid(columns: columns, spacing: Theme.Spacing.sm) {
+                        tile("camera.fill", "Photo", "AI estimates macros", color: Theme.accentTeal) { route = .photo }
+                        tile("barcode.viewfinder", "Barcode", "Scan a product", color: .indigo) { route = .barcode }
+                        tile("text.viewfinder", "Label", "Read a nutrition label", color: .orange) { route = .label }
+                        tile("keyboard", "Describe", "Type what you ate", color: .pink) { route = .text }
+                    }
+
+                    gridHeader("Activity & body")
+                    LazyVGrid(columns: columns, spacing: Theme.Spacing.sm) {
+                        tile("dumbbell.fill", "Workout", "Record your sets", color: .purple) { startWorkoutLog() }
+                        tile("scalemass.fill", "Weight", "Log today's weight", color: .green) { route = .weight }
+                    }
                 }
-                Section("Workout") {
-                    row("dumbbell.fill", "Workout", "Record sets against your plan") { startWorkoutLog() }
-                }
-                Section("Body") {
-                    row("scalemass.fill", "Weight", "Log today's weight") { route = .weight }
+                .padding(Theme.Spacing.m)
+            }
+            .background(ScreenBackground())
+            .navigationTitle("Log")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(.secondary)
+                    }
+                    .accessibilityLabel("Close")
                 }
             }
-            .navigationTitle("Log")
             .task {
                 do { for try await p in repo.planStream() { plan = p } } catch {}
             }
@@ -42,7 +66,7 @@ struct LogHubView: View {
                 case .label:   LabelEntrySheet()
                 }
             }
-            .sheet(item: $workoutDay) { day in SessionLogSheet(day: day) }
+            .fullScreenCover(item: $workoutDay) { day in WorkoutSessionView(day: day) }
             .confirmationDialog("Which session?", isPresented: $showWorkoutPicker, titleVisibility: .visible) {
                 if let plan {
                     ForEach(plan.days) { day in
@@ -55,6 +79,8 @@ struct LogHubView: View {
                      : "Pick the day you trained.")
             }
         }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 
     /// Mirror of Today's old workout shortcut: if today is a scheduled training
@@ -70,34 +96,43 @@ struct LogHubView: View {
         }
     }
 
-    private func row(_ icon: String, _ title: String, _ subtitle: String, action: @escaping () -> Void) -> some View {
+    private func gridHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, Theme.Spacing.xs)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private func tile(_ icon: String, _ title: String, _ subtitle: String,
+                      color: Color, action: @escaping () -> Void) -> some View {
         Button {
             Haptics.tap()
             action()
         } label: {
-            HStack(spacing: Theme.Spacing.m) {
-                Image(systemName: icon)
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(Theme.accentTeal)
-                    .frame(width: 40, height: 40)
-                    .background(Theme.accentTeal.opacity(0.12), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-                VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+                IconBadge(systemImage: icon, color: color, size: 38)
+                VStack(alignment: .leading, spacing: 1) {
                     Text(title)
-                        .font(.body.weight(.medium))
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                     Text(subtitle)
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                 }
-                Spacer(minLength: Theme.Spacing.s)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
             }
-            .padding(.vertical, Theme.Spacing.xs)
-            .frame(minHeight: Theme.minTapTarget)
+            .padding(Theme.Spacing.sm)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
+            )
             .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
         .accessibilityHint(subtitle)
@@ -236,6 +271,7 @@ struct MealConfirmationList: View {
                 .listRowBackground(Color.clear)
             }
         }
+        .selectAllOnFocus()
     }
 
     private func macroPill(_ label: String, _ grams: Int, _ color: Color) -> some View {

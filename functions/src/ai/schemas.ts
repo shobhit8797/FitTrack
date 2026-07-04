@@ -11,10 +11,19 @@ export interface PlanExercise {
   notes: string;
   order: number;
 }
+/** A warm-up movement or cool-down stretch: name + prescription ("2 min",
+ * "10 reps/side", "30 s hold") + optional cue. */
+export interface MobilityItem {
+  name: string;
+  prescription: string;
+  notes: string;
+}
 export interface PlanDay {
   dayLabel: string;
   order: number;
+  warmup: MobilityItem[];
   exercises: PlanExercise[];
+  cooldown: MobilityItem[];
 }
 export interface WorkoutPlanResult {
   splitName: string;
@@ -101,9 +110,19 @@ export function validatePlan(v: unknown): WorkoutPlanResult {
     days: v.days.map((d, di) => {
       const day = isObj(d) ? d : {};
       const ex = Array.isArray(day.exercises) ? day.exercises : [];
+      const mobility = (list: unknown): MobilityItem[] =>
+        (Array.isArray(list) ? list : []).map((m) => {
+          const x = isObj(m) ? m : {};
+          return {
+            name: str(x.name, 'Movement'),
+            prescription: str(x.prescription),
+            notes: str(x.notes),
+          };
+        });
       return {
         dayLabel: str(day.dayLabel, `Day ${di + 1}`),
         order: num(day.order, di),
+        warmup: mobility(day.warmup),
         exercises: ex.map((e, ei) => {
           const x = isObj(e) ? e : {};
           return {
@@ -114,6 +133,7 @@ export function validatePlan(v: unknown): WorkoutPlanResult {
             order: num(x.order, ei),
           };
         }),
+        cooldown: mobility(day.cooldown),
       };
     }),
   };

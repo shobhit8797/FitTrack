@@ -35,6 +35,7 @@ struct ProgressDashboardView: View {
                 }
                 .padding(Theme.Spacing.m)
             }
+            .background(ScreenBackground())
             .navigationTitle("Progress")
             .task {
                 do { for try await w in repo.weightStream() { weights = w } } catch {}

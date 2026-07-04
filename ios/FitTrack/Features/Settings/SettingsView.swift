@@ -9,6 +9,7 @@ struct SettingsView: View {
     @Environment(HealthKitService.self) private var health
     @Environment(Repository.self) private var repo
     @Environment(FunctionsClient.self) private var functions
+    @Environment(\.dismiss) private var dismiss
     @State private var showDeleteConfirm = false
     @State private var showSignOutConfirm = false
     @State private var error: String?
@@ -21,8 +22,19 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Account") {
-                    LabeledContent("Signed in as", value: auth.displayName ?? "—")
+                Section {
+                    HStack(spacing: Theme.Spacing.m) {
+                        initialsAvatar
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(auth.displayName ?? "Your account")
+                                .font(.headline)
+                            Text("Signed in")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, Theme.Spacing.xs)
+                    .accessibilityElement(children: .combine)
                     Button("Sign out", role: .destructive) {
                         Haptics.warning()
                         showSignOutConfirm = true
@@ -97,6 +109,13 @@ struct SettingsView: View {
             }
             .tint(Theme.accentTeal)
             .navigationTitle("Settings")
+            // Presented as a sheet from the Today toolbar (it's no longer a tab).
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .fontWeight(.semibold)
+                }
+            }
             .task {
                 do {
                     for try await profile in repo.profileStream() {
@@ -118,6 +137,22 @@ struct SettingsView: View {
                 Text("This removes your profile, logs, photos, and sign-in. It cannot be undone.")
             }
         }
+    }
+
+    /// Accent-gradient circle with the user's initials — a friendly identity
+    /// anchor at the top of Settings.
+    private var initialsAvatar: some View {
+        let initials = (auth.displayName ?? "?")
+            .split(separator: " ").prefix(2)
+            .compactMap { $0.first.map(String.init) }
+            .joined()
+            .uppercased()
+        return Text(initials.isEmpty ? "?" : initials)
+            .font(.system(.headline, design: .rounded, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: 48, height: 48)
+            .background(Theme.accentGradient, in: Circle())
+            .accessibilityHidden(true)
     }
 
     /// A plan row: shows current generation status and a Generate/Regenerate button.

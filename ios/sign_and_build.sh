@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+# Use the full Xcode toolchain even when xcode-select points at CommandLineTools.
+if ! xcode-select -p 2>/dev/null | grep -q "Xcode.app"; then
+    export DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
+fi
+
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT="$PROJECT_DIR/FitTrack.xcodeproj"
 SCHEME="FitTrack"
@@ -37,6 +42,23 @@ security find-identity -v -p codesigning | grep "Apple Distribution.*7MFYAGK3VV"
     echo "ERROR: Apple Distribution certificate not found for team 7MFYAGK3VV."
     exit 1
 }
+
+# Auto-bump the build number: next = max(latest on App Store Connect, local) + 1.
+# Falls back to local-only if the ASC query fails (offline / missing PyJWT).
+echo "==> Determining next build number..."
+CURRENT=$(sed -n 's/^ *CURRENT_PROJECT_VERSION: "\([0-9]*\)"/\1/p' "$PROJECT_DIR/project.yml")
+LATEST=$(python3 "$PROJECT_DIR/asc_builds.py" 2>/dev/null || echo "")
+if [[ "$LATEST" =~ ^[0-9]+$ ]] && [ "$LATEST" -ge "$CURRENT" ]; then
+    NEXT=$((LATEST + 1))
+else
+    NEXT=$((CURRENT + 1))
+    [ -n "$LATEST" ] || echo "  (App Store Connect query unavailable — bumping local version)"
+fi
+sed -i '' "s/CURRENT_PROJECT_VERSION: \"$CURRENT\"/CURRENT_PROJECT_VERSION: \"$NEXT\"/" "$PROJECT_DIR/project.yml"
+echo "  Build number: $CURRENT -> $NEXT"
+
+echo "==> Regenerating Xcode project (xcodegen)..."
+(cd "$PROJECT_DIR" && xcodegen generate)
 
 mkdir -p "$OUTPUT_DIR"
 rm -rf "$ARCHIVE_PATH" "$IPA_DIR"
@@ -85,7 +107,6 @@ echo "  appstoreconnect.apple.com"
 echo "============================================"
 echo ""
 echo "Next steps:"
-echo "  1. Go to appstoreconnect.apple.com -> FitTrack -> TestFlight"
+echo "  1. Check processing:  bash $PROJECT_DIR/check_status.sh"
 echo "  2. Build appears in ~15 min (Apple processes it)"
-echo "  3. Add External Testers -> New Group -> Public Link"
-echo "  4. Share the link — anyone installs TestFlight app then FitTrack"
+echo "  3. appstoreconnect.apple.com -> FitTrack -> TestFlight to distribute"

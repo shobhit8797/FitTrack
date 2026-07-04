@@ -13,19 +13,26 @@ struct SignInView: View {
     @State private var error: String?
     @State private var busy = false
     @State private var currentNonce: String?
+    @State private var resetSentTo: String?
 
     var body: some View {
         ScrollView {
             VStack(spacing: Theme.Spacing.l) {
-                VStack(spacing: Theme.Spacing.sm) {
+                VStack(spacing: Theme.Spacing.m) {
                     Image(systemName: "flame.fill")
-                        .font(.system(size: 60))
-                        .foregroundStyle(Theme.accentGradient)
-                        .shadow(color: Theme.accentTeal.opacity(0.3), radius: 12, y: 6)
-                    Text("FitTrack").font(.largeTitle.bold())
-                    Text("Your plan, your numbers.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 40, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 84, height: 84)
+                        .background(Theme.accentGradient, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .shadow(color: Theme.accentTeal.opacity(0.35), radius: 14, y: 8)
+                        .accessibilityHidden(true)
+                    VStack(spacing: Theme.Spacing.xs) {
+                        Text("FitTrack")
+                            .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                        Text("Your plan, your numbers.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .padding(.top, Theme.Spacing.xl)
                 .padding(.bottom, Theme.Spacing.s)
@@ -76,8 +83,28 @@ struct SignInView: View {
 
                 Button(isSignUp ? "Have an account? Sign in" : "New here? Create an account") {
                     isSignUp.toggle()
+                    error = nil
+                    resetSentTo = nil
                 }
                 .font(.footnote)
+
+                // Recovery path for email/password users (Firebase sends the link).
+                if !isSignUp {
+                    Button("Forgot password?") {
+                        Haptics.tap()
+                        Task { await sendReset() }
+                    }
+                    .font(.footnote)
+                    .disabled(busy)
+                }
+
+                if let resetSentTo {
+                    Label("Reset link sent to \(resetSentTo). Check your inbox, set a new password, then sign in here.",
+                          systemImage: "envelope.badge.fill")
+                        .font(.caption)
+                        .foregroundStyle(Theme.accentTeal)
+                        .multilineTextAlignment(.center)
+                }
 
                 if let error {
                     Text(error).font(.caption).foregroundStyle(.red).multilineTextAlignment(.center)
@@ -89,7 +116,10 @@ struct SignInView: View {
                     .padding(.top)
             }
             .padding(Theme.Spacing.l)
+            .frame(maxWidth: 440) // keeps the column comfortable on larger phones
+            .frame(maxWidth: .infinity)
         }
+        .background(ScreenBackground())
     }
 
     private func submitEmail() async {
@@ -101,6 +131,22 @@ struct SignInView: View {
             } else {
                 try await auth.signIn(email: email, password: password)
             }
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func sendReset() async {
+        guard !email.isEmpty else {
+            error = "Enter your email above first, then tap Forgot password."
+            return
+        }
+        busy = true; error = nil; resetSentTo = nil
+        defer { busy = false }
+        do {
+            try await auth.sendPasswordReset(email: email)
+            Haptics.success()
+            resetSentTo = email
         } catch {
             self.error = error.localizedDescription
         }

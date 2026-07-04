@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import UIKit
 
@@ -23,6 +24,12 @@ enum Theme {
     static let carbs = Color(red: 0.95, green: 0.61, blue: 0.07)   // amber
     static let fat = Color(red: 0.40, green: 0.49, blue: 0.92)     // blue
 
+    // Activity metrics get their own hues so the dashboard doesn't read as a
+    // wall of teal. System colors adapt to dark mode / Increase Contrast.
+    static let steps = Color.green
+    static let energy = Color.orange
+    static let exercise = Color.indigo
+
     // 8pt grid (spec §14). Names are stable — views reference these directly.
     enum Spacing {
         static let xs: CGFloat = 4
@@ -47,6 +54,16 @@ extension MealType {
         case .snack:     return "carrot.fill"
         }
     }
+
+    /// Each meal carries its own hue so the day's timeline scans at a glance.
+    var color: Color {
+        switch self {
+        case .breakfast: return .orange
+        case .lunch:     return Theme.accentTeal
+        case .dinner:    return .indigo
+        case .snack:     return .pink
+        }
+    }
 }
 
 // MARK: - Haptics
@@ -64,7 +81,62 @@ enum Haptics {
     }
 }
 
+// MARK: - Text-field behavior
+
+/// Selects the whole value whenever a text field inside this view begins
+/// editing, so typing replaces it instead of appending ("0" → "8", not "08").
+/// Apply to numeric-entry screens (set logging, weight, onboarding body stats).
+struct SelectAllOnFocus: ViewModifier {
+    func body(content: Content) -> some View {
+        content.onReceive(NotificationCenter.default.publisher(
+            for: UITextField.textDidBeginEditingNotification)) { note in
+            guard let field = note.object as? UITextField else { return }
+            // Async so our selection lands after UIKit finishes placing the caret.
+            DispatchQueue.main.async { field.selectAll(nil) }
+        }
+    }
+}
+
+extension View {
+    func selectAllOnFocus() -> some View { modifier(SelectAllOnFocus()) }
+}
+
 // MARK: - Cards & surfaces
+
+/// Full-screen backdrop: system background with a soft accent wash bleeding
+/// down from the top. Gives every screen a branded, airy feel without
+/// compromising content contrast (the wash fades out by ~a third of the way).
+struct ScreenBackground: View {
+    var body: some View {
+        LinearGradient(
+            stops: [
+                .init(color: Theme.accentTeal.opacity(0.12), location: 0),
+                .init(color: Theme.accentTeal.opacity(0.0), location: 0.35),
+            ],
+            startPoint: .top, endPoint: .bottom
+        )
+        .background(Color(.systemGroupedBackground))
+        .ignoresSafeArea()
+    }
+}
+
+/// Rounded-square tinted icon — the app's standard visual anchor for rows and
+/// tiles. Color pairs with a text label everywhere it's used (never color alone).
+struct IconBadge: View {
+    let systemImage: String
+    var color: Color = Theme.accent
+    var size: CGFloat = 40
+
+    var body: some View {
+        Image(systemName: systemImage)
+            .font(.system(size: size * 0.42, weight: .semibold))
+            .symbolRenderingMode(.hierarchical)
+            .foregroundStyle(color)
+            .frame(width: size, height: size)
+            .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: size * 0.3, style: .continuous))
+            .accessibilityHidden(true)
+    }
+}
 
 /// Rounded card container used across screens. Material gives layered depth;
 /// a hairline stroke + soft shadow keep it crisp on both light and dark.

@@ -159,26 +159,69 @@ struct OnboardingFlow: View {
             Picker("Sex (for BMR)", selection: $draft.sex) {
                 ForEach(Sex.allCases) { Text($0.label).tag($0) }
             }
+            .pickerStyle(.segmented)
             DatePicker("Birth date", selection: $draft.birthDate, displayedComponents: .date)
         }
     }
 
     private var bodyStep: some View {
         Form {
-            Stepper("Height: \(Int(draft.heightCm)) cm", value: $draft.heightCm, in: 120...230)
-            Stepper("Weight: \(draft.weightKg, specifier: "%.1f") kg", value: $draft.weightKg, in: 35...250, step: 0.5)
+            // Direct numeric entry — steppers were painful for values this size.
+            LabeledContent("Height") {
+                HStack(spacing: Theme.Spacing.xs) {
+                    TextField("cm", value: $draft.heightCm, format: .number.precision(.fractionLength(0)))
+                        .keyboardType(.numberPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 72)
+                        .font(.body.weight(.semibold).monospacedDigit())
+                    Text("cm").foregroundStyle(.secondary)
+                }
+            }
+            LabeledContent("Weight") {
+                HStack(spacing: Theme.Spacing.xs) {
+                    TextField("kg", value: $draft.weightKg, format: .number.precision(.fractionLength(1)))
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 72)
+                        .font(.body.weight(.semibold).monospacedDigit())
+                    Text("kg").foregroundStyle(.secondary)
+                }
+            }
             Picker("Activity level", selection: $draft.activityLevel) {
                 ForEach(ActivityLevel.allCases) { Text($0.label).tag($0) }
             }
         }
+        .selectAllOnFocus()
     }
 
     private var goalStep: some View {
         Form {
-            Picker("Goal", selection: $draft.goal) {
-                ForEach(Goal.allCases) { Text($0.label).tag($0) }
+            Section {
+                ForEach(Goal.allCases) { goal in
+                    let selected = draft.goal == goal
+                    Button {
+                        Haptics.selection()
+                        draft.goal = goal
+                    } label: {
+                        HStack(spacing: Theme.Spacing.sm) {
+                            IconBadge(systemImage: goal.icon,
+                                      color: selected ? Theme.accentTeal : .secondary, size: 36)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(goal.label).foregroundStyle(.primary)
+                                Text(goal.detail).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(Theme.accentTeal)
+                                .opacity(selected ? 1 : 0)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .tint(.primary)
+                    .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+                    .accessibilityHint(goal.detail)
+                }
             }
-            .pickerStyle(.inline)
             Section("What are you looking for?") {
                 TextField("Optional: describe in your words", text: $draft.goalFreeText, axis: .vertical)
                     .lineLimit(2...4)
@@ -333,6 +376,28 @@ struct WeekdayPicker: View {
             }
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+/// Icon + one-line description per goal, so the choice reads as cards rather
+/// than a bare radio list.
+private extension Goal {
+    var icon: String {
+        switch self {
+        case .fatLoss: "flame.fill"
+        case .recomp: "arrow.triangle.2.circlepath"
+        case .muscleGain: "dumbbell.fill"
+        case .maintain: "equal.circle.fill"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .fatLoss: "Drop fat while keeping muscle"
+        case .recomp: "Trade fat for muscle at a steady weight"
+        case .muscleGain: "Build size and strength"
+        case .maintain: "Hold where you are, eat to support it"
+        }
     }
 }
 

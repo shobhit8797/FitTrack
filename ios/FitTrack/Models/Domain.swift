@@ -150,6 +150,18 @@ struct WorkoutDay: Codable, Identifiable, Equatable {
     var dayLabel: String
     var order: Int
     var exercises: [PlannedExercise]
+    // Optional: plans generated before warm-up/cool-down existed decode as nil.
+    var warmup: [MobilityItem]?
+    var cooldown: [MobilityItem]?
+}
+
+/// A warm-up movement or cool-down stretch/posture: name + prescription
+/// ("2 min", "10 reps/side", "30 s hold") + optional form cue.
+struct MobilityItem: Codable, Identifiable, Equatable {
+    var id: String { "\(name)-\(prescription)" }
+    var name: String
+    var prescription: String
+    var notes: String
 }
 
 struct PlannedExercise: Codable, Identifiable, Equatable {

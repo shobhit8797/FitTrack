@@ -26,9 +26,14 @@ Rules:
   into the sessions (no separate posture day). Never prescribe medical/rehab treatment.
 - Respect equipment and experience. Use the user's extraContext where relevant.
 - Reference exercises by common names so they can be matched to the exercise catalog.
+- Every day includes a warmup (3-5 dynamic movements/activation drills priming that day's
+  muscles) and a cooldown (3-5 static stretches/postures for the muscles trained). Each has a
+  short prescription like "2 min", "10 reps/side", or "30 s hold".
 JSON: { "splitName":string, "summary":string, "scheduledWeekdays":[int],
   "days":[ { "dayLabel":string, "order":int,
-    "exercises":[ {"name":string,"sets":int,"repRange":string,"notes":string,"order":int} ] } ] }`;
+    "warmup":[ {"name":string,"prescription":string,"notes":string} ],
+    "exercises":[ {"name":string,"sets":int,"repRange":string,"notes":string,"order":int} ],
+    "cooldown":[ {"name":string,"prescription":string,"notes":string} ] } ] }`;
 
 export function planUser(i: PlanPromptInputs): string {
   return `User inputs: sex=${i.sex}, age=${i.age}, height=${i.heightCm}cm, weight=${i.weightKg}kg, goal=${i.goal},
@@ -46,7 +51,9 @@ injuries/notes="${i.injuriesNotes}", extraContext="${i.freeFormContext}".`;
 
 const WORKOUT_JSON_SCHEMA = `{ "splitName":string, "summary":string, "scheduledWeekdays":[int 0-6, 0=Sun],
   "days":[ { "dayLabel":string, "order":int,
-    "exercises":[ {"name":string,"sets":int,"repRange":string,"notes":string,"order":int} ] } ] }`;
+    "warmup":[ {"name":string,"prescription":string,"notes":string} ],
+    "exercises":[ {"name":string,"sets":int,"repRange":string,"notes":string,"order":int} ],
+    "cooldown":[ {"name":string,"prescription":string,"notes":string} ] } ] }`;
 
 /** One-shot workout-plan message for the Lyzr Fitness Architect agent. */
 export function workoutMessage(i: PlanPromptInputs): string {
@@ -60,6 +67,11 @@ injuries/notes="${i.injuriesNotes}", extraContext="${i.freeFormContext}".
 Rules: match the training-day count exactly; assign each day a clear label; favor compound lifts;
 put progressive-overload guidance in each exercise's notes; respect equipment, experience, and injuries;
 reference exercises by common names so they map to an exercise catalog; set scheduledWeekdays from preferredWeekdays.
+Give every day a "warmup" list (3-5 dynamic movements/activation drills that prime that day's muscles,
+e.g. arm circles, leg swings, band pull-aparts, glute bridges) and a "cooldown" list (3-5 static
+stretches/postures for the muscles just trained, e.g. child's pose, doorway pec stretch, pigeon pose).
+Each warmup/cooldown item needs a short "prescription" like "2 min", "10 reps/side", or "30 s hold",
+plus a brief form cue in notes.
 
 Respond with STRICT JSON ONLY — no prose, no markdown, no code fences — matching exactly this schema:
 ${WORKOUT_JSON_SCHEMA}`;

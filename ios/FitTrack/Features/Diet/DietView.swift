@@ -72,13 +72,10 @@ struct DietView: View {
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    HStack(spacing: Theme.Spacing.sm) {
+                    HStack(spacing: Theme.Spacing.s) {
                         macroStat(plan.dailyCalories, "Calories", unit: "kcal", color: Theme.accentTeal)
-                        statDivider
                         macroStat(plan.proteinG, "Protein", unit: "g", color: Theme.protein)
-                        statDivider
                         macroStat(plan.carbsG, "Carbs", unit: "g", color: Theme.carbs)
-                        statDivider
                         macroStat(plan.fatG, "Fat", unit: "g", color: Theme.fat)
                     }
                 }
@@ -177,15 +174,16 @@ struct DietView: View {
         }
     }
 
-    /// A single bold, color-coded stat in the hero row (value + caption label).
+    /// A single bold, color-coded stat chip in the hero row (value + caption label).
     private func macroStat(_ value: Int, _ label: String, unit: String, color: Color) -> some View {
         VStack(spacing: Theme.Spacing.xs) {
             HStack(alignment: .firstTextBaseline, spacing: 1) {
                 Text("\(value)")
-                    .font(.title3.weight(.bold))
+                    .font(.system(.title3, design: .rounded, weight: .bold))
                     .foregroundStyle(color)
                     .monospacedDigit()
                     .contentTransition(.numericText(value: Double(value)))
+                    .minimumScaleFactor(0.7)
                 Text(unit)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(color.opacity(0.7))
@@ -195,13 +193,9 @@ struct DietView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
+        .padding(.vertical, Theme.Spacing.s)
+        .background(color.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .animation(reduceMotion ? nil : .snappy, value: value)
-    }
-
-    private var statDivider: some View {
-        Rectangle()
-            .fill(Color.primary.opacity(0.08))
-            .frame(width: 0.5, height: 28)
     }
 
     /// Accent-tinted header label for hydration / grocery / notes sections.

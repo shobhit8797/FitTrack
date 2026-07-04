@@ -70,14 +70,23 @@ struct RootView: View {
     }
 }
 
+/// Cross-tab UI state: any screen can summon the Log hub (e.g. the empty-state
+/// "Log a meal" CTA on Today) without owning the sheet itself.
+@Observable
+final class AppState {
+    var showLog = false
+}
+
 struct MainTabView: View {
-    // The ➕ lives in the middle of the tab bar (spec §8). Tapping it opens the
-    // Log hub as a sheet rather than switching tabs, so we track the prior tab
-    // and a sheet flag instead of letting the placeholder tab actually show.
+    // Four content tabs + the center ➕ (spec §8). Settings is deliberately NOT
+    // a tab — it's reached from the Today toolbar, keeping the bar focused on
+    // the things people do daily. Tapping ➕ opens the Log hub as a sheet rather
+    // than switching tabs, so we restore the prior tab and flip a sheet flag.
     @State private var selection = 0
-    @State private var showLog = false
+    @State private var appState = AppState()
 
     var body: some View {
+        @Bindable var appState = appState
         TabView(selection: $selection) {
             TodayView()
                 .tabItem { Label("Today", systemImage: "house.fill") }
@@ -96,15 +105,13 @@ struct MainTabView: View {
             ProgressDashboardView()
                 .tabItem { Label("Progress", systemImage: "chart.xyaxis.line") }
                 .tag(4)
-            SettingsView()
-                .tabItem { Label("Settings", systemImage: "gearshape.fill") }
-                .tag(5)
         }
+        .environment(appState)
         .onChange(of: selection) { previous, new in
             guard new == 2 else { return }
             selection = previous // stay on the current tab; the ➕ only logs.
-            showLog = true
+            appState.showLog = true
         }
-        .sheet(isPresented: $showLog) { LogHubView() }
+        .sheet(isPresented: $appState.showLog) { LogHubView() }
     }
 }

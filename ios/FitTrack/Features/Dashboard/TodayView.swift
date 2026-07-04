@@ -1,39 +1,40 @@
 import SwiftUI
 
-// Today / Dashboard (spec §7.1). Calorie ring hero, macro bars, today's meals,
-// steps + active energy from Health, swipe between days.
+// Today / Dashboard (spec §7.1). Greeting title, a scrollable week strip for
+// day selection (swipe still works), a hero card with Eaten / ring / Burned and
+// macro bars, activity tiles from Health, and the day's meal timeline.
+// Settings lives behind the toolbar gear — not a tab (daily actions only in
+// the tab bar).
 struct TodayView: View {
     @Environment(Repository.self) private var repo
     @Environment(HealthKitService.self) private var health
     @Environment(FunctionsClient.self) private var functions
+    @Environment(AppState.self) private var appState
     @State private var model = TodayViewModel()
     @State private var selectedDate = Date()
     @State private var planStatus: String?
     @State private var planError: String?
     @State private var retrying = false
+    @State private var showSettings = false
+    // Gym mode: streamed plan + the day being trained right now.
+    @State private var plan: WorkoutPlan?
+    @State private var gymDay: WorkoutDay?
+    @State private var showGymDayPicker = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: Theme.Spacing.l) {
-                    dayNav
+                    WeekStrip(selectedDate: $selectedDate)
+
+                    if Calendar.current.isDateInToday(selectedDate) {
+                        gymModeCard
+                    }
 
                     planBanner
 
                     if let target = model.calorieTarget {
-                        CalorieRing(consumed: model.totalCalories, target: target)
-                            .padding(.top, Theme.Spacing.m)
-
-                        Card {
-                            VStack(spacing: Theme.Spacing.m) {
-                                MacroBar(name: "Protein", current: model.totalProtein,
-                                         target: model.proteinTarget, color: Theme.protein)
-                                MacroBar(name: "Carbs", current: model.totalCarbs,
-                                         target: model.carbTarget, color: Theme.carbs)
-                                MacroBar(name: "Fat", current: model.totalFat,
-                                         target: model.fatTarget, color: Theme.fat)
-                            }
-                        }
+                        heroCard(target: target)
                     } else if model.loading {
                         targetsSkeleton
                     } else {
@@ -41,7 +42,7 @@ struct TodayView: View {
                                        message: "Finish setting up your profile to see your daily calorie and macro goals.")
                     }
 
-                    healthCard
+                    activitySection
 
                     mealsSection
                 }
@@ -57,10 +58,36 @@ struct TodayView: View {
                         }
                 )
             }
+            .background(ScreenBackground())
             .refreshable { await model.load(repo: repo, health: health, date: selectedDate) }
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle(navTitle)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Haptics.tap()
+                        showSettings = true
+                    } label: {
+                        Image(systemName: "gearshape.fill")
+                            .symbolRenderingMode(.hierarchical)
+                    }
+                    .accessibilityLabel("Settings")
+                }
+            }
+            .sheet(isPresented: $showSettings) { SettingsView() }
+            .fullScreenCover(item: $gymDay) { day in WorkoutSessionView(day: day) }
+            .confirmationDialog("Which workout?", isPresented: $showGymDayPicker,
+                                titleVisibility: .visible) {
+                ForEach(plan?.days ?? []) { day in
+                    Button(day.dayLabel) { gymDay = day }
+                }
+            } message: {
+                Text("Pick today's session.")
+            }
             .task(id: selectedDate) { await model.load(repo: repo, health: health, date: selectedDate) }
+            .task {
+                do { for try await p in repo.planStream() { plan = p } } catch {}
+            }
             // Live plan-generation status, so the home banner updates the moment
             // the async generator finishes (or fails) — never blocks this screen.
             .task {
@@ -75,6 +102,54 @@ struct TodayView: View {
             .onChange(of: health.lastUpdate) {
                 Task { await model.load(repo: repo, health: health, date: selectedDate) }
             }
+        }
+    }
+
+    // MARK: Gym mode
+
+    /// One-tap entry into today's workout. Reads training vs rest day from the
+    /// plan; Start opens the full-screen session logger (the day picker appears
+    /// only when the plan has several days to choose from).
+    @ViewBuilder private var gymModeCard: some View {
+        if let plan, !plan.days.isEmpty {
+            Card {
+                HStack(spacing: Theme.Spacing.m) {
+                    IconBadge(systemImage: "dumbbell.fill", color: .purple, size: 44)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Gym mode").font(.headline)
+                        Text(todayIsScheduled
+                             ? "Training day — your plan is ready."
+                             : "Rest day — train anyway if you like.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: Theme.Spacing.s)
+                    Button {
+                        Haptics.tap()
+                        startGym(plan: plan)
+                    } label: {
+                        Label("Start", systemImage: "play.fill")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.accentTeal)
+                    .accessibilityHint("Open today's workout in gym mode")
+                }
+            }
+        }
+    }
+
+    private var todayIsScheduled: Bool {
+        guard let plan else { return false }
+        let weekday = Calendar.current.component(.weekday, from: Date()) - 1 // 0=Sun
+        return plan.scheduledWeekdays.contains(weekday)
+    }
+
+    private func startGym(plan: WorkoutPlan) {
+        if plan.days.count == 1 {
+            gymDay = plan.days[0]
+        } else {
+            showGymDayPicker = true
         }
     }
 
@@ -123,92 +198,163 @@ struct TodayView: View {
         }
     }
 
+    /// A warm, time-aware greeting for today; plain weekday names for the past.
     private var navTitle: String {
-        if Calendar.current.isDateInToday(selectedDate) { return "Today" }
+        if Calendar.current.isDateInToday(selectedDate) {
+            switch Calendar.current.component(.hour, from: Date()) {
+            case 0..<12: return "Good morning"
+            case 12..<17: return "Good afternoon"
+            default: return "Good evening"
+            }
+        }
         if Calendar.current.isDateInYesterday(selectedDate) { return "Yesterday" }
         return selectedDate.formatted(.dateTime.weekday(.wide))
     }
 
-    private var dayNav: some View {
-        let isToday = Calendar.current.isDateInToday(selectedDate)
-        return HStack {
-            Button { shift(-1) } label: {
-                Image(systemName: "chevron.left").font(.body.weight(.semibold))
-                    .frame(width: Theme.minTapTarget, height: Theme.minTapTarget)
+    // MARK: Hero
+
+    /// Eaten and Burned flank the ring; the ring's hero number is what's left.
+    /// Macro bars share the card so "how am I doing today" is one glance.
+    private func heroCard(target: Int) -> some View {
+        Card {
+            VStack(spacing: Theme.Spacing.m) {
+                HStack(alignment: .center) {
+                    flankStat(value: model.totalCalories, label: "Eaten",
+                              icon: "fork.knife", color: Theme.accentTeal)
+                        .frame(maxWidth: .infinity)
+                    CalorieRing(consumed: model.totalCalories, target: target, diameter: 164)
+                    flankStat(value: model.activeEnergy ?? 0, label: "Burned",
+                              icon: "flame.fill", color: Theme.energy)
+                        .frame(maxWidth: .infinity)
+                }
+                .padding(.top, Theme.Spacing.xs)
+
+                Divider()
+
+                VStack(spacing: Theme.Spacing.sm) {
+                    MacroBar(name: "Protein", current: model.totalProtein,
+                             target: model.proteinTarget, color: Theme.protein)
+                    MacroBar(name: "Carbs", current: model.totalCarbs,
+                             target: model.carbTarget, color: Theme.carbs)
+                    MacroBar(name: "Fat", current: model.totalFat,
+                             target: model.fatTarget, color: Theme.fat)
+                }
             }
-            .accessibilityLabel("Previous day")
-            Spacer()
-            Text(selectedDate.formatted(date: .complete, time: .omitted))
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
-                .contentTransition(.numericText())
-            Spacer()
-            Button { shift(1) } label: {
-                Image(systemName: "chevron.right").font(.body.weight(.semibold))
-                    .frame(width: Theme.minTapTarget, height: Theme.minTapTarget)
-            }
-            .accessibilityLabel("Next day")
-            .disabled(isToday)
-            .opacity(isToday ? 0.3 : 1)
         }
     }
 
+    private func flankStat(value: Int, label: String, icon: String, color: Color) -> some View {
+        VStack(spacing: Theme.Spacing.xs) {
+            Image(systemName: icon)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(color)
+            Text("\(value)")
+                .font(.system(.title3, design: .rounded, weight: .bold))
+                .monospacedDigit()
+                .contentTransition(.numericText(value: Double(value)))
+                .animation(.snappy, value: value)
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label): \(value) kilocalories")
+    }
+
     private var targetsSkeleton: some View {
-        VStack(spacing: Theme.Spacing.l) {
-            Circle()
-                .fill(Color.primary.opacity(0.08))
-                .frame(width: 210, height: 210)
-                .padding(.top, Theme.Spacing.m)
-            Card {
+        Card {
+            VStack(spacing: Theme.Spacing.l) {
+                Circle()
+                    .fill(Color.primary.opacity(0.08))
+                    .frame(width: 164, height: 164)
                 VStack(spacing: Theme.Spacing.m) {
                     ForEach(0..<3, id: \.self) { _ in SkeletonBar(height: 18) }
                 }
             }
+            .frame(maxWidth: .infinity)
         }
         .redacted(reason: .placeholder)
         .accessibilityLabel("Loading your targets")
     }
 
-    private var healthCard: some View {
-        Card {
-            HStack {
-                metric("figure.walk", "\(model.steps ?? 0)", "steps")
-                Divider().frame(height: 36)
-                metric("flame.fill", "\(model.activeEnergy ?? 0)", "active kcal")
-                Divider().frame(height: 36)
-                metric("timer", "\(model.exerciseMinutes ?? 0)", "min")
+    // MARK: Activity
+
+    private var activitySection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            SectionHeader("Activity")
+            HStack(spacing: Theme.Spacing.sm) {
+                activityTile("figure.walk", value: model.steps ?? 0, label: "steps", color: Theme.steps)
+                activityTile("flame.fill", value: model.activeEnergy ?? 0, label: "active kcal", color: Theme.energy)
+                activityTile("timer", value: model.exerciseMinutes ?? 0, label: "exercise min", color: Theme.exercise)
             }
         }
     }
 
-    private func metric(_ icon: String, _ value: String, _ label: String) -> some View {
-        VStack(spacing: 2) {
-            Image(systemName: icon).foregroundStyle(Theme.accentTeal)
-            Text(value).font(.headline)
-            Text(label).font(.caption2).foregroundStyle(.secondary)
+    private func activityTile(_ icon: String, value: Int, label: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+            IconBadge(systemImage: icon, color: color, size: 32)
+            Text("\(value)")
+                .font(.system(.title3, design: .rounded, weight: .bold))
+                .monospacedDigit()
+                .contentTransition(.numericText(value: Double(value)))
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
-        .frame(maxWidth: .infinity)
+        .padding(Theme.Spacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(value) \(label)")
     }
+
+    // MARK: Meals
 
     private var mealsSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            SectionHeader("Meals") {
+                Button {
+                    Haptics.tap()
+                    appState.showLog = true
+                } label: {
+                    Label("Add", systemImage: "plus.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.accentTeal)
+                }
+                .accessibilityHint("Log a meal, workout, or weight")
+            }
+
             ForEach(MealType.allCases) { type in
                 let meals = model.meals.filter { $0.mealType == type }
                 if !meals.isEmpty {
                     let subtotal = meals.reduce(0) { $0 + $1.calories }
-                    SectionHeader(type.label) {
-                        Label("\(subtotal) kcal", systemImage: type.icon)
-                            .labelStyle(.titleAndIcon)
+                    HStack {
+                        Text(type.label)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text("\(subtotal) kcal")
                             .font(.caption.weight(.medium))
-                            .foregroundStyle(Theme.accentTeal)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
                     }
                     .padding(.top, Theme.Spacing.s)
+                    .padding(.horizontal, Theme.Spacing.xs)
+                    .accessibilityElement(children: .combine)
                     ForEach(meals) { meal in mealRow(meal) }
                 }
             }
             if model.meals.isEmpty {
                 EmptyStateView(systemImage: "fork.knife", title: "No meals yet",
-                               message: "Tap ➕ in the tab bar to log your first meal — by photo, barcode, label, or just describe it.")
+                               message: "Log your first meal — by photo, barcode, label, or just describe it.",
+                               actionTitle: "Log a meal",
+                               action: { appState.showLog = true })
             }
         }
         .animation(.snappy, value: model.meals)
@@ -217,30 +363,118 @@ struct TodayView: View {
     private func mealRow(_ meal: MealEntry) -> some View {
         Card {
             HStack(spacing: Theme.Spacing.m) {
-                Image(systemName: meal.mealType.icon)
-                    .font(.body)
-                    .foregroundStyle(Theme.accentTeal)
-                    .frame(width: 28)
+                IconBadge(systemImage: meal.mealType.icon, color: meal.mealType.color)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(meal.name).fontWeight(.medium)
-                    if let s = meal.servingDescription {
+                        .lineLimit(2)
+                    if let s = meal.servingDescription, !s.isEmpty {
                         Text(s).font(.caption).foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
+                    Text("P \(Int(meal.proteinG)) · C \(Int(meal.carbsG)) · F \(Int(meal.fatG)) g")
+                        .font(.caption2)
+                        .monospacedDigit()
+                        .foregroundStyle(.tertiary)
                 }
-                Spacer()
-                Text("\(meal.calories)")
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                + Text(" kcal").font(.caption).foregroundColor(.secondary)
+                Spacer(minLength: Theme.Spacing.s)
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text("\(meal.calories)")
+                        .font(.system(.title3, design: .rounded, weight: .bold))
+                        .monospacedDigit()
+                    Text("kcal")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(meal.name), \(meal.calories) kilocalories, \(Int(meal.proteinG)) grams protein")
     }
 
     private func shift(_ days: Int) {
         guard let next = Calendar.current.date(byAdding: .day, value: days, to: selectedDate) else { return }
         Haptics.selection()
         withAnimation(.snappy) { selectedDate = next }
+    }
+}
+
+// MARK: - Week strip
+
+/// Scrollable strip of the last four weeks. Each day is a tappable pill —
+/// today gets a ring, the selected day fills with the accent gradient. Replaces
+/// the old chevron day-nav: shows *where* you are in the week at a glance and
+/// makes any recent day one tap away.
+private struct WeekStrip: View {
+    @Binding var selectedDate: Date
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private static let dayCount = 28
+    private var days: [Date] {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        return (0..<Self.dayCount).reversed().compactMap {
+            cal.date(byAdding: .day, value: -$0, to: today)
+        }
+    }
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Theme.Spacing.s) {
+                    ForEach(days, id: \.self) { day in
+                        pill(for: day)
+                            .id(Calendar.current.startOfDay(for: day))
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.xs)
+                .padding(.vertical, Theme.Spacing.xs)
+            }
+            .onAppear {
+                proxy.scrollTo(Calendar.current.startOfDay(for: selectedDate), anchor: .center)
+            }
+            .onChange(of: selectedDate) { _, new in
+                withAnimation(reduceMotion ? nil : .snappy) {
+                    proxy.scrollTo(Calendar.current.startOfDay(for: new), anchor: .center)
+                }
+            }
+        }
+    }
+
+    private func pill(for day: Date) -> some View {
+        let cal = Calendar.current
+        let isSelected = cal.isDate(day, inSameDayAs: selectedDate)
+        let isToday = cal.isDateInToday(day)
+        return Button {
+            Haptics.selection()
+            withAnimation(reduceMotion ? nil : .snappy) { selectedDate = day }
+        } label: {
+            VStack(spacing: Theme.Spacing.xs) {
+                Text(day.formatted(.dateTime.weekday(.narrow)))
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(isSelected ? Theme.accentTeal : .secondary)
+                Text(day.formatted(.dateTime.day()))
+                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(isSelected ? .white : .primary)
+                    .frame(width: 38, height: 38)
+                    .background {
+                        if isSelected {
+                            Circle()
+                                .fill(Theme.accentGradient)
+                                .shadow(color: Theme.accentTeal.opacity(0.35), radius: 6, y: 2)
+                        } else if isToday {
+                            Circle().strokeBorder(Theme.accentTeal, lineWidth: 1.5)
+                        } else {
+                            Circle().fill(Color.primary.opacity(0.05))
+                        }
+                    }
+            }
+            .frame(minWidth: Theme.minTapTarget, minHeight: Theme.minTapTarget)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(day.formatted(date: .complete, time: .omitted))
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 }
 

@@ -66,6 +66,7 @@ export interface FoodItem {
   proteinG: number;
   carbsG: number;
   fatG: number;
+  fiberG: number;
   confidence: number;
 }
 export interface FoodAnalysisResult {
@@ -77,6 +78,7 @@ export interface MacroSet {
   proteinG: number | null;
   carbsG: number | null;
   fatG: number | null;
+  fiberG: number | null;
 }
 export interface LabelResult {
   productName: string | null;
@@ -195,6 +197,7 @@ export function validateFoodAnalysis(v: unknown): FoodAnalysisResult {
         proteinG: num(x.proteinG),
         carbsG: num(x.carbsG),
         fatG: num(x.fatG),
+        fiberG: num(x.fiberG),
         confidence: Math.max(0, Math.min(1, num(x.confidence, 0.5))),
       };
     }),
@@ -207,7 +210,13 @@ export function validateLabel(v: unknown): LabelResult {
     const x = isObj(m) ? m : {};
     const n = (k: string): number | null =>
       typeof x[k] === 'number' && Number.isFinite(x[k] as number) ? (x[k] as number) : null;
-    return { calories: n('calories'), proteinG: n('proteinG'), carbsG: n('carbsG'), fatG: n('fatG') };
+    return {
+      calories: n('calories'),
+      proteinG: n('proteinG'),
+      carbsG: n('carbsG'),
+      fatG: n('fatG'),
+      fiberG: n('fiberG'),
+    };
   };
   return {
     productName: typeof o.productName === 'string' ? o.productName : null,

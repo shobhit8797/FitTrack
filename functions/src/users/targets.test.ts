@@ -51,3 +51,34 @@ test('body-fat lowers protein toward lean mass', () => {
   const without = computeTargets(base);
   assert.ok(withBf.proteinTargetG < without.proteinTargetG);
 });
+
+test('weekly rate paces the deficit at ~7700 kcal/kg', () => {
+  // 0.5 kg/week loss => ~550 kcal/day below TDEE.
+  const t = computeTargets({ ...base, goal: 'fatLoss', weeklyWeightChangeKg: 0.5 });
+  const expected = t.tdee - (0.5 * 7700) / 7;
+  assert.ok(Math.abs(t.calorieTarget - expected) <= 2, `${t.calorieTarget} vs ${expected}`);
+});
+
+test('a faster rate means fewer calories', () => {
+  const slow = computeTargets({ ...base, goal: 'fatLoss', weeklyWeightChangeKg: 0.25 });
+  const fast = computeTargets({ ...base, goal: 'fatLoss', weeklyWeightChangeKg: 0.75 });
+  assert.ok(fast.calorieTarget < slow.calorieTarget);
+});
+
+test('deficit is clamped to a safe band even for an extreme rate', () => {
+  const t = computeTargets({ ...base, goal: 'fatLoss', weeklyWeightChangeKg: 5 });
+  // 5 kg/week would be ~5500 kcal/day; must be capped at 25% below TDEE (or floor).
+  assert.ok(t.calorieTarget >= t.tdee * 0.75 - 1);
+});
+
+test('weekly rate adds a surplus for muscle gain', () => {
+  const t = computeTargets({ ...base, goal: 'muscleGain', weeklyWeightChangeKg: 0.25 });
+  assert.ok(t.calorieTarget > t.tdee);
+  assert.ok(t.calorieTarget <= t.tdee * 1.2 + 1);
+});
+
+test('weekly rate is ignored for maintain/recomp', () => {
+  const withRate = computeTargets({ ...base, goal: 'recomp', weeklyWeightChangeKg: 0.5 });
+  const without = computeTargets({ ...base, goal: 'recomp' });
+  assert.strictEqual(withRate.calorieTarget, without.calorieTarget);
+});

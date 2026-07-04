@@ -222,6 +222,11 @@ struct OnboardingFlow: View {
                     .accessibilityHint(goal.detail)
                 }
             }
+            if draft.goal.usesWeeklyRate {
+                Section("How fast?") {
+                    WeeklyRatePicker(goal: draft.goal, rateKg: $draft.weeklyWeightChangeKg)
+                }
+            }
             Section("What are you looking for?") {
                 TextField("Optional: describe in your words", text: $draft.goalFreeText, axis: .vertical)
                     .lineLimit(2...4)
@@ -320,8 +325,17 @@ struct OnboardingDraft {
     var heightCm: Double = 170
     var weightKg: Double = 70
     var activityLevel: ActivityLevel = .moderate
-    var goal: Goal = .recomp
+    var goal: Goal = .recomp {
+        // Keep the rate valid for the chosen goal: seed a default when switching
+        // into a rate-bearing goal, clear it otherwise.
+        didSet {
+            guard goal != oldValue else { return }
+            weeklyWeightChangeKg = goal.usesWeeklyRate ? goal.defaultWeeklyRate : 0
+        }
+    }
     var goalFreeText = ""
+    /// Target weekly weight-change magnitude (kg). 0 unless the goal uses a rate.
+    var weeklyWeightChangeKg: Double = Goal.recomp.defaultWeeklyRate
     var trainingDaysPerWeek = 4
     var preferredWeekdays: Set<Int> = [1, 2, 4, 5]
     var experience = "intermediate"
@@ -331,9 +345,32 @@ struct OnboardingDraft {
     var injuriesNotes = ""
     var freeFormContext = ""
 
+    init() {}
+
+    /// Seed the draft from an existing profile so Settings can edit it in place.
+    init(profile p: UserProfile) {
+        displayName = p.displayName
+        sex = p.sex
+        birthDate = p.birthDate
+        heightCm = p.heightCm
+        weightKg = p.weightKg
+        activityLevel = p.activityLevel
+        goalFreeText = p.goalFreeText ?? ""
+        trainingDaysPerWeek = p.trainingDaysPerWeek
+        preferredWeekdays = Set(p.preferredWeekdays)
+        experience = p.experience
+        trainingEnvironment = TrainingEnvironment.matching(p.equipment)
+        dietType = p.dietType
+        restrictionsText = p.dietaryRestrictions.joined(separator: ", ")
+        injuriesNotes = p.injuriesNotes
+        freeFormContext = p.freeFormContext
+        goal = p.goal // didSet doesn't fire during init, so the stored rate below wins
+        weeklyWeightChangeKg = p.weeklyWeightChangeKg ?? (p.goal.usesWeeklyRate ? p.goal.defaultWeeklyRate : 0)
+    }
+
     var payload: [String: Any] {
         let iso = ISO8601DateFormatter().string(from: birthDate)
-        return [
+        var body: [String: Any] = [
             "displayName": displayName,
             "sex": sex.rawValue,
             "birthDate": iso,
@@ -351,6 +388,12 @@ struct OnboardingDraft {
             "injuriesNotes": injuriesNotes,
             "freeFormContext": freeFormContext,
         ]
+        // Only send a rate for goals that use one; the backend keys off its
+        // presence, and sending 0 for maintain/recomp would be meaningless.
+        if goal.usesWeeklyRate, weeklyWeightChangeKg > 0 {
+            body["weeklyWeightChangeKg"] = weeklyWeightChangeKg
+        }
+        return body
     }
 }
 
@@ -443,5 +486,56 @@ enum TrainingEnvironment: String, CaseIterable, Identifiable {
         case .minimal: ["Dumbbell", "Bands", "Bodyweight"]
         case .calisthenics: ["Bodyweight", "Bands"]
         }
+    }
+
+    /// Best-fit environment for a stored equipment list, so editing an existing
+    /// profile pre-selects the right card. Matches the case whose equipment set
+    /// equals the stored one, else falls back to full gym.
+    static func matching(_ equipment: [String]) -> TrainingEnvironment {
+        let stored = Set(equipment)
+        return allCases.first { Set($0.equipment) == stored } ?? .gym
+    }
+}
+
+/// Reusable control for choosing a target weekly weight-change pace. Renders as a
+/// segmented picker of the goal's presets with a plain-language caption
+/// underneath. Shown only for goals that move weight (fat-loss / muscle-gain).
+struct WeeklyRatePicker: View {
+    let goal: Goal
+    @Binding var rateKg: Double
+
+    private var presets: [Double] { goal.weeklyRatePresets }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+            Picker("Weekly pace", selection: $rateKg) {
+                ForEach(presets, id: \.self) { kg in
+                    Text(format(kg)).tag(kg)
+                }
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: rateKg) { _, _ in Haptics.selection() }
+
+            Text(caption)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// e.g. "0.5 kg". Trims a trailing ".0" so 1.0 reads as "1".
+    private func format(_ kg: Double) -> String {
+        let s = String(format: "%.3f", kg)
+        var trimmed = s
+        while trimmed.hasSuffix("0") { trimmed.removeLast() }
+        if trimmed.hasSuffix(".") { trimmed.removeLast() }
+        return "\(trimmed) kg"
+    }
+
+    private var caption: String {
+        let perMonth = rateKg * 4.345
+        return "\(goal.weeklyRateName(rateKg)) — \(goal.rateVerb) about "
+            + "\(format(rateKg))/week (~\(String(format: "%.1f", perMonth)) kg/month). "
+            + "Sets your calorie target."
     }
 }

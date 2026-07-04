@@ -20,6 +20,8 @@ interface OnboardingProfile {
   goal: Goal;
   goalFreeText?: string;
   bodyFatPct?: number;
+  /** Desired weekly weight-change magnitude in kg (>= 0); direction from goal. */
+  weeklyWeightChangeKg?: number;
   dietType: string;
   dietaryRestrictions: string[];
   trainingDaysPerWeek: number;
@@ -39,6 +41,53 @@ function ageFromBirthDate(iso: string, now: Date): number {
 }
 
 /**
+ * Persist a full profile and (re)compute deterministic targets (spec §5) from it.
+ * Shared by onboarding and profile edits so age derivation + targets math live in
+ * exactly one place and stay server-authoritative. `firstTime` stamps onboardedAt.
+ * Returns the computed targets.
+ */
+async function persistProfileAndTargets(
+  uid: string,
+  p: OnboardingProfile,
+  firstTime: boolean,
+) {
+  const age = ageFromBirthDate(p.birthDate, new Date());
+  const targets = computeTargets({
+    sex: p.sex,
+    age,
+    heightCm: p.heightCm,
+    weightKg: p.weightKg,
+    activityLevel: p.activityLevel,
+    goal: p.goal,
+    bodyFatPct: p.bodyFatPct,
+    weeklyWeightChangeKg: p.weeklyWeightChangeKg,
+  });
+
+  await db.doc(`users/${uid}`).set(
+    {
+      ...p,
+      // Persist as a Date so Firestore stores a Timestamp — the iOS client
+      // decodes UserProfile.birthDate as a Date, and a raw ISO string would
+      // fail that decode (stranding the user on onboarding).
+      birthDate: new Date(p.birthDate),
+      age,
+      calorieTarget: targets.calorieTarget,
+      proteinTargetG: targets.proteinTargetG,
+      carbTargetG: targets.carbTargetG,
+      fatTargetG: targets.fatTargetG,
+      bmr: targets.bmr,
+      tdee: targets.tdee,
+      targetsComputedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+      ...(firstTime ? { onboardedAt: FieldValue.serverTimestamp() } : {}),
+    },
+    { merge: true },
+  );
+
+  return targets;
+}
+
+/**
  * POST /users/complete-onboarding (spec §4).
  * 1. Store this user's profile.  2. Compute targets deterministically (§5).  3. Return.
  *
@@ -55,42 +104,31 @@ export const completeOnboarding = onCall(
       const p = req.data?.profile as OnboardingProfile;
       if (!p) throw new Error('profile required');
 
-      const age = ageFromBirthDate(p.birthDate, new Date());
-      const targets = computeTargets({
-        sex: p.sex,
-        age,
-        heightCm: p.heightCm,
-        weightKg: p.weightKg,
-        activityLevel: p.activityLevel,
-        goal: p.goal,
-        bodyFatPct: p.bodyFatPct,
-      });
-
-      // Persist profile + targets immediately, and flag the plan as generating.
-      // Writing planStatus='generating' is what fires the async plan trigger.
-      await db.doc(`users/${uid}`).set(
-        {
-          ...p,
-          // Persist as a Date so Firestore stores a Timestamp — the iOS client
-          // decodes UserProfile.birthDate as a Date, and a raw ISO string would
-          // fail that decode (stranding the user on onboarding).
-          birthDate: new Date(p.birthDate),
-          age,
-          calorieTarget: targets.calorieTarget,
-          proteinTargetG: targets.proteinTargetG,
-          carbTargetG: targets.carbTargetG,
-          fatTargetG: targets.fatTargetG,
-          bmr: targets.bmr,
-          tdee: targets.tdee,
-          targetsComputedAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-          onboardedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true },
-      );
+      const targets = await persistProfileAndTargets(uid, p, true);
 
       // No plan generated here — the client routes on targets and the user
       // generates plans on demand from Settings.
+      return { targets };
+    } catch (err) {
+      throw toHttpsError(err);
+    }
+  },
+);
+
+/**
+ * POST /users/update-profile — edit an existing profile from Settings.
+ * Persists the full profile and recomputes targets (spec §5) from the new stats,
+ * goal, and desired weekly rate. Does NOT touch onboardedAt or any plan status —
+ * the user regenerates their workout/diet plan explicitly to pick up the changes.
+ */
+export const updateProfile = onCall(
+  { timeoutSeconds: 30, memory: '256MiB' },
+  async (req) => {
+    const uid = requireUid(req);
+    try {
+      const p = req.data?.profile as OnboardingProfile;
+      if (!p) throw new Error('profile required');
+      const targets = await persistProfileAndTargets(uid, p, false);
       return { targets };
     } catch (err) {
       throw toHttpsError(err);

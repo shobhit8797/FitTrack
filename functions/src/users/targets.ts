@@ -20,6 +20,13 @@ export interface TargetInputs {
   goal: Goal;
   /** Optional body-fat % (0–100) to refine protein toward lean mass. */
   bodyFatPct?: number;
+  /**
+   * Desired weekly weight-change magnitude in kg (>= 0). Direction is inferred
+   * from the goal (fatLoss → deficit, muscleGain → surplus); ignored for
+   * recomp/maintain. When present it *drives* the calorie target via the
+   * ~7700 kcal-per-kg rule instead of the fixed goal percentages.
+   */
+  weeklyWeightChangeKg?: number;
 }
 
 export interface Targets {
@@ -45,23 +52,44 @@ export function bmr(i: TargetInputs): number {
   return i.sex === 'male' ? base + 5 : base - 161;
 }
 
+/** Energy density of body-mass change — the standard ~7700 kcal per kg. */
+const KCAL_PER_KG = 7700;
+/** Safety rails on how far the target may sit from maintenance. */
+const MAX_DEFICIT_FRACTION = 0.25; // never cut more than 25% below TDEE
+const MAX_SURPLUS_FRACTION = 0.2; // never add more than 20% above TDEE
+
 export function computeTargets(i: TargetInputs): Targets {
   const b = bmr(i);
   const tdee = b * ACTIVITY_MULTIPLIER[i.activityLevel];
 
-  // Calories by goal (spec §5.3), with a sane floor.
+  // Calories: if the user set a desired weekly rate, pace the deficit/surplus to
+  // hit it (~7700 kcal/kg), clamped to a safe band around TDEE. Otherwise fall
+  // back to the goal-based percentages (spec §5.3). A sane floor applies to both.
   let calories: number;
-  switch (i.goal) {
-    case 'fatLoss':
-    case 'recomp':
-      calories = tdee * 0.82; // ~18% deficit
-      break;
-    case 'muscleGain':
-      calories = tdee * 1.1;
-      break;
-    case 'maintain':
-    default:
-      calories = tdee;
+  const rate = i.weeklyWeightChangeKg;
+  const rateApplies =
+    rate != null && rate > 0 && (i.goal === 'fatLoss' || i.goal === 'muscleGain');
+
+  if (rateApplies) {
+    const dailyDelta = (rate! * KCAL_PER_KG) / 7;
+    if (i.goal === 'muscleGain') {
+      calories = Math.min(tdee + dailyDelta, tdee * (1 + MAX_SURPLUS_FRACTION));
+    } else {
+      calories = Math.max(tdee - dailyDelta, tdee * (1 - MAX_DEFICIT_FRACTION));
+    }
+  } else {
+    switch (i.goal) {
+      case 'fatLoss':
+      case 'recomp':
+        calories = tdee * 0.82; // ~18% deficit
+        break;
+      case 'muscleGain':
+        calories = tdee * 1.1;
+        break;
+      case 'maintain':
+      default:
+        calories = tdee;
+    }
   }
   const floor = i.sex === 'male' ? 1500 : 1200;
   calories = Math.max(calories, floor);

@@ -16,6 +16,9 @@ struct TodayView: View {
     @State private var planError: String?
     @State private var retrying = false
     @State private var showSettings = false
+    // Tap a logged meal to edit it; long-press (or the Delete action) removes it.
+    @State private var editingMeal: MealEntry?
+    @State private var mealPendingDeletion: MealEntry?
     // Gym mode: streamed plan + the day being trained right now.
     @State private var plan: WorkoutPlan?
     @State private var gymDay: WorkoutDay?
@@ -42,7 +45,12 @@ struct TodayView: View {
                                        message: "Finish setting up your profile to see your daily calorie and macro goals.")
                     }
 
-                    activitySection
+                    // Activity tiles are Health-derived — only show them once the
+                    // user has connected Apple Health, so we never display empty
+                    // "0 steps / 0 min" data to someone who hasn't connected.
+                    if health.connected {
+                        activitySection
+                    }
 
                     mealsSection
                 }
@@ -75,6 +83,25 @@ struct TodayView: View {
                 }
             }
             .sheet(isPresented: $showSettings) { SettingsView() }
+            .sheet(item: $editingMeal) { meal in
+                MealEditSheet(meal: meal, date: selectedDate)
+            }
+            .confirmationDialog(
+                "Delete this meal?",
+                isPresented: Binding(
+                    get: { mealPendingDeletion != nil },
+                    set: { if !$0 { mealPendingDeletion = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: mealPendingDeletion
+            ) { meal in
+                Button("Delete", role: .destructive) {
+                    Task { try? await repo.deleteMeal(meal.id, on: selectedDate) }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { meal in
+                Text("\"\(meal.name)\" will be removed from this day.")
+            }
             .fullScreenCover(item: $gymDay) { day in WorkoutSessionView(day: day) }
             .confirmationDialog("Which workout?", isPresented: $showGymDayPicker,
                                 titleVisibility: .visible) {
@@ -84,6 +111,7 @@ struct TodayView: View {
             } message: {
                 Text("Pick today's session.")
             }
+            .task { await health.refreshConnectionState() }
             .task(id: selectedDate) { await model.load(repo: repo, health: health, date: selectedDate) }
             .task {
                 do { for try await p in repo.planStream() { plan = p } } catch {}
@@ -361,34 +389,61 @@ struct TodayView: View {
     }
 
     private func mealRow(_ meal: MealEntry) -> some View {
-        Card {
-            HStack(spacing: Theme.Spacing.m) {
-                IconBadge(systemImage: meal.mealType.icon, color: meal.mealType.color)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(meal.name).fontWeight(.medium)
-                        .lineLimit(2)
-                    if let s = meal.servingDescription, !s.isEmpty {
-                        Text(s).font(.caption).foregroundStyle(.secondary)
-                            .lineLimit(1)
+        Button {
+            Haptics.tap()
+            editingMeal = meal
+        } label: {
+            Card {
+                HStack(spacing: Theme.Spacing.m) {
+                    IconBadge(systemImage: meal.mealType.icon, color: meal.mealType.color)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(meal.name).fontWeight(.medium)
+                            .lineLimit(2)
+                        if let s = meal.servingDescription, !s.isEmpty {
+                            Text(s).font(.caption).foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        Text(macroLine(meal))
+                            .font(.caption2)
+                            .monospacedDigit()
+                            .foregroundStyle(.tertiary)
                     }
-                    Text("P \(Int(meal.proteinG)) · C \(Int(meal.carbsG)) · F \(Int(meal.fatG)) g")
-                        .font(.caption2)
-                        .monospacedDigit()
-                        .foregroundStyle(.tertiary)
+                    Spacer(minLength: Theme.Spacing.s)
+                    VStack(alignment: .trailing, spacing: 0) {
+                        Text("\(meal.calories)")
+                            .font(.system(.title3, design: .rounded, weight: .bold))
+                            .monospacedDigit()
+                        Text("kcal")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                Spacer(minLength: Theme.Spacing.s)
-                VStack(alignment: .trailing, spacing: 0) {
-                    Text("\(meal.calories)")
-                        .font(.system(.title3, design: .rounded, weight: .bold))
-                        .monospacedDigit()
-                    Text("kcal")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
+            }
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button {
+                editingMeal = meal
+            } label: {
+                Label("Edit", systemImage: "pencil")
+            }
+            Button(role: .destructive) {
+                mealPendingDeletion = meal
+            } label: {
+                Label("Delete", systemImage: "trash")
             }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(meal.name), \(meal.calories) kilocalories, \(Int(meal.proteinG)) grams protein")
+        .accessibilityHint("Double tap to edit, or use the actions to delete.")
+    }
+
+    /// Macro summary for a meal row — appends fiber only when it was recorded,
+    /// so older meals (no fiber) read the same as before.
+    private func macroLine(_ meal: MealEntry) -> String {
+        var line = "P \(Int(meal.proteinG)) · C \(Int(meal.carbsG)) · F \(Int(meal.fatG))"
+        if let fiber = meal.fiberG, fiber > 0 { line += " · Fb \(Int(fiber))" }
+        return line + " g"
     }
 
     private func shift(_ days: Int) {
@@ -515,5 +570,152 @@ final class TodayViewModel {
                 self.meals = meals
             }
         } catch { /* offline cache still serves last value */ }
+    }
+}
+
+// MARK: - Edit a logged meal
+
+/// Edit any meal the user has already logged — meal type, time, name, serving,
+/// and every macro (spec §7.3: the logged value is always the user's to correct).
+/// Saving writes back in place via the repository, which recomputes the day
+/// rollup; changing the time to another day relocates the entry. Delete is also
+/// available here for symmetry with the row's context menu.
+struct MealEditSheet: View {
+    @Environment(Repository.self) private var repo
+    @Environment(\.dismiss) private var dismiss
+
+    private let originalDate: Date
+    @State private var meal: MealEntry
+    @State private var serving: String
+    @State private var fiber: Double
+    @State private var saving = false
+    @State private var error: String?
+    @State private var showDeleteConfirm = false
+
+    init(meal: MealEntry, date: Date) {
+        originalDate = date
+        _meal = State(initialValue: meal)
+        _serving = State(initialValue: meal.servingDescription ?? "")
+        _fiber = State(initialValue: meal.fiberG ?? 0)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Picker("Meal", selection: $meal.mealType) {
+                        ForEach(MealType.allCases) { Text($0.label).tag($0) }
+                    }
+                    DatePicker("When", selection: $meal.loggedAt)
+                }
+
+                Section("Item") {
+                    TextField("Name", text: $meal.name)
+                    TextField("Serving (e.g. 1 katori)", text: $serving)
+                    LabeledContent("Calories") {
+                        TextField("kcal", value: $meal.calories, format: .number)
+                            .keyboardType(.numberPad).multilineTextAlignment(.trailing)
+                            .font(.body.weight(.semibold))
+                    }
+                    macroField("Protein", value: $meal.proteinG, color: Theme.protein)
+                    macroField("Carbs", value: $meal.carbsG, color: Theme.carbs)
+                    macroField("Fat", value: $meal.fatG, color: Theme.fat)
+                    macroField("Fiber", value: $fiber, color: Theme.carbs)
+                }
+
+                Section {
+                    Button(role: .destructive) {
+                        Haptics.warning()
+                        showDeleteConfirm = true
+                    } label: {
+                        Label("Delete meal", systemImage: "trash")
+                    }
+                }
+
+                if let error {
+                    Section {
+                        Label(error, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red).font(.caption)
+                    }
+                }
+            }
+            .tint(Theme.accentTeal)
+            .navigationTitle("Edit meal")
+            .navigationBarTitleDisplayMode(.inline)
+            .selectAllOnFocus()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { Task { await save() } }
+                        .fontWeight(.semibold)
+                        .disabled(saving || meal.name.isEmpty)
+                }
+            }
+            .overlay {
+                if saving {
+                    Color.black.opacity(0.06).ignoresSafeArea()
+                    ProgressView("Saving…")
+                        .padding(Theme.Spacing.ml)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+                }
+            }
+            .confirmationDialog("Delete this meal?", isPresented: $showDeleteConfirm,
+                                titleVisibility: .visible) {
+                Button("Delete", role: .destructive) { Task { await delete() } }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("\"\(meal.name)\" will be removed from this day.")
+            }
+        }
+    }
+
+    /// One editable macro row — mirrors MealConfirmationList's layout so editing a
+    /// logged meal feels identical to the confirmation step where it was created.
+    private func macroField(_ label: String, value: Binding<Double>, color: Color) -> some View {
+        LabeledContent {
+            HStack(spacing: 2) {
+                TextField(label, value: value, format: .number.precision(.fractionLength(0...1)))
+                    .keyboardType(.decimalPad)
+                    .multilineTextAlignment(.trailing)
+                    .font(.body.weight(.medium))
+                Text("g").foregroundStyle(.secondary)
+            }
+        } label: {
+            HStack(spacing: Theme.Spacing.xs) {
+                Circle().fill(color).frame(width: 7, height: 7)
+                Text(label)
+            }
+        }
+        .accessibilityLabel("\(label) in grams")
+    }
+
+    private func save() async {
+        error = nil
+        saving = true
+        defer { saving = false }
+        let trimmedServing = serving.trimmingCharacters(in: .whitespacesAndNewlines)
+        meal.servingDescription = trimmedServing.isEmpty ? nil : trimmedServing
+        meal.fiberG = fiber > 0 ? fiber : nil
+        do {
+            try await repo.updateMeal(meal, originalDate: originalDate)
+            Haptics.success()
+            dismiss()
+        } catch {
+            Haptics.error()
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func delete() async {
+        do {
+            try await repo.deleteMeal(meal.id, on: originalDate)
+            Haptics.success()
+            dismiss()
+        } catch {
+            Haptics.error()
+            self.error = error.localizedDescription
+        }
     }
 }

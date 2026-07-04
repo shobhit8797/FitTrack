@@ -13,6 +13,27 @@ import { validateDietPlan, validatePlan } from '../ai/schemas';
 
 const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+/**
+ * A plain-language description of the user's desired pace of weight change, fed
+ * to both plan agents so the diet paces its deficit/surplus and the workout
+ * scales volume to match (e.g. an aggressive cut → prioritize muscle retention).
+ * Empty when no rate applies (recomp/maintain, or none set).
+ */
+function weeklyGoalNote(p: StoredPlanProfile): string {
+  const rate = p.weeklyWeightChangeKg;
+  if (rate == null || rate <= 0) return '';
+  const perMonth = (rate * 4.345).toFixed(1);
+  if (p.goal === 'fatLoss') {
+    return `Target pace: lose about ${rate} kg/week (~${perMonth} kg/month). ` +
+      `Pace the calorie deficit to this rate and prioritize preserving muscle at this speed.`;
+  }
+  if (p.goal === 'muscleGain') {
+    return `Target pace: gain about ${rate} kg/week (~${perMonth} kg/month). ` +
+      `Pace the surplus to this rate to favor lean gains over fat.`;
+  }
+  return '';
+}
+
 /** Plan-status values written to users/{uid} (mirrored by the iOS client). */
 export type PlanStatus = 'generating' | 'ready' | 'failed';
 
@@ -24,6 +45,8 @@ export interface StoredPlanProfile {
   weightKg: number;
   goal: string;
   goalFreeText?: string;
+  /** Desired weekly weight-change magnitude in kg (>= 0); direction from goal. */
+  weeklyWeightChangeKg?: number;
   activityLevel: string;
   trainingDaysPerWeek: number;
   preferredWeekdays: number[];
@@ -49,6 +72,7 @@ export function buildPlanInputs(p: StoredPlanProfile): PlanPromptInputs {
     heightCm: p.heightCm,
     weightKg: p.weightKg,
     goal: p.goalFreeText ? `${p.goal} (${p.goalFreeText})` : p.goal,
+    weeklyGoalNote: weeklyGoalNote(p),
     trainingDaysPerWeek: p.trainingDaysPerWeek,
     preferredWeekdays: (p.preferredWeekdays ?? []).map((d) => WEEKDAY_NAMES[d]).join(','),
     experience: p.experience,
@@ -68,6 +92,7 @@ export function buildDietInputs(p: StoredPlanProfile): DietPromptInputs {
     heightCm: p.heightCm,
     weightKg: p.weightKg,
     goal: p.goalFreeText ? `${p.goal} (${p.goalFreeText})` : p.goal,
+    weeklyGoalNote: weeklyGoalNote(p),
     activityLevel: p.activityLevel,
     dietType: p.dietType,
     restrictions: (p.dietaryRestrictions ?? []).join(','),

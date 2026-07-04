@@ -17,28 +17,55 @@ struct SettingsView: View {
     @State private var isExporting = false
     @State private var workoutStatus: String?
     @State private var dietStatus: String?
+    @State private var profile: UserProfile?
     @State private var working: Set<String> = []
+
+    /// The name shown on the account card. Prefer the freshly-streamed profile
+    /// name (updates the instant an edit is saved) over the cached auth name.
+    private var accountName: String {
+        profile?.displayName ?? auth.displayName ?? "Your account"
+    }
+
+    /// One-line profile recap for the Settings row (goal + pace when set).
+    private var profileSummary: String {
+        guard let profile else { return "View and edit your profile" }
+        var parts = [profile.goal.label]
+        if profile.goal.usesWeeklyRate, let rate = profile.weeklyWeightChangeKg, rate > 0 {
+            let kg = rate.formatted(.number.precision(.fractionLength(0...2)))
+            parts.append("\(kg) kg/wk")
+        }
+        return parts.joined(separator: " · ")
+    }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    HStack(spacing: Theme.Spacing.m) {
-                        initialsAvatar
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(auth.displayName ?? "Your account")
-                                .font(.headline)
-                            Text("Signed in")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                    // The account card is the entry point for editing the
+                    // profile: tapping it opens the full editor. It shows the
+                    // user's name (not a generic "Account" label) so Settings
+                    // opens on something personal.
+                    NavigationLink {
+                        ProfileEditView()
+                    } label: {
+                        HStack(spacing: Theme.Spacing.m) {
+                            initialsAvatar
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(accountName)
+                                    .font(.headline)
+                                Text(profileSummary)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
+                        .padding(.vertical, Theme.Spacing.xs)
                     }
-                    .padding(.vertical, Theme.Spacing.xs)
-                    .accessibilityElement(children: .combine)
                     Button("Sign out", role: .destructive) {
                         Haptics.warning()
                         showSignOutConfirm = true
                     }
+                } footer: {
+                    Text("Tap your name to edit your stats, goal, and how fast you want to lose or gain weight. Your calorie and macro targets update on save.")
                 }
 
                 Section {
@@ -118,9 +145,10 @@ struct SettingsView: View {
             }
             .task {
                 do {
-                    for try await profile in repo.profileStream() {
-                        workoutStatus = profile?.workoutPlanStatus
-                        dietStatus = profile?.dietPlanStatus
+                    for try await streamed in repo.profileStream() {
+                        profile = streamed
+                        workoutStatus = streamed?.workoutPlanStatus
+                        dietStatus = streamed?.dietPlanStatus
                     }
                 } catch {}
             }

@@ -10,8 +10,20 @@ interface CachedProduct {
   productName: string | null;
   brand: string | null;
   servingSize: string | null;
-  perServing: { calories: number | null; proteinG: number | null; carbsG: number | null; fatG: number | null };
-  per100g: { calories: number | null; proteinG: number | null; carbsG: number | null; fatG: number | null };
+  perServing: {
+    calories: number | null;
+    proteinG: number | null;
+    carbsG: number | null;
+    fatG: number | null;
+    fiberG: number | null;
+  };
+  per100g: {
+    calories: number | null;
+    proteinG: number | null;
+    carbsG: number | null;
+    fatG: number | null;
+    fiberG: number | null;
+  };
   source: 'openfoodfacts';
 }
 
@@ -52,12 +64,14 @@ export const foodBarcode = onCall(async (req) => {
         proteinG: n(nutr['proteins_serving']),
         carbsG: n(nutr['carbohydrates_serving']),
         fatG: n(nutr['fat_serving']),
+        fiberG: n(nutr['fiber_serving']),
       },
       per100g: {
         calories: n(nutr['energy-kcal_100g']),
         proteinG: n(nutr['proteins_100g']),
         carbsG: n(nutr['carbohydrates_100g']),
         fatG: n(nutr['fat_100g']),
+        fiberG: n(nutr['fiber_100g']),
       },
       source: 'openfoodfacts',
     };

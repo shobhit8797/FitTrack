@@ -7,6 +7,8 @@ export interface PlanPromptInputs {
   heightCm: number;
   weightKg: number;
   goal: string;
+  /** Plain-language desired pace of weight change ('' when none applies). */
+  weeklyGoalNote: string;
   trainingDaysPerWeek: number;
   preferredWeekdays: string;
   experience: string;
@@ -39,7 +41,7 @@ export function planUser(i: PlanPromptInputs): string {
   return `User inputs: sex=${i.sex}, age=${i.age}, height=${i.heightCm}cm, weight=${i.weightKg}kg, goal=${i.goal},
 trainingDaysPerWeek=${i.trainingDaysPerWeek}, preferredWeekdays=${i.preferredWeekdays}, experience=${i.experience},
 equipment=${i.equipment}, dietType=${i.dietType}, restrictions=${i.restrictions},
-injuries/notes="${i.injuriesNotes}", extraContext="${i.freeFormContext}".`;
+injuries/notes="${i.injuriesNotes}", extraContext="${i.freeFormContext}".${i.weeklyGoalNote ? `\n${i.weeklyGoalNote}` : ''}`;
 }
 
 // ---- Lyzr one-shot message builders ----
@@ -62,7 +64,7 @@ export function workoutMessage(i: PlanPromptInputs): string {
 Client: sex=${i.sex}, age=${i.age}, height=${i.heightCm}cm, weight=${i.weightKg}kg, goal=${i.goal},
 trainingDaysPerWeek=${i.trainingDaysPerWeek}, preferredWeekdays=${i.preferredWeekdays}, experience=${i.experience},
 equipment=${i.equipment}, dietType=${i.dietType}, restrictions=${i.restrictions},
-injuries/notes="${i.injuriesNotes}", extraContext="${i.freeFormContext}".
+injuries/notes="${i.injuriesNotes}", extraContext="${i.freeFormContext}".${i.weeklyGoalNote ? `\n${i.weeklyGoalNote}` : ''}
 
 Rules: match the training-day count exactly; assign each day a clear label; favor compound lifts;
 put progressive-overload guidance in each exercise's notes; respect equipment, experience, and injuries;
@@ -83,6 +85,8 @@ export interface DietPromptInputs {
   heightCm: number;
   weightKg: number;
   goal: string;
+  /** Plain-language desired pace of weight change ('' when none applies). */
+  weeklyGoalNote: string;
   activityLevel: string;
   dietType: string;
   restrictions: string;
@@ -106,7 +110,7 @@ export function dietMessage(i: DietPromptInputs): string {
   return `Design a complete daily meal plan for this client. You have ALL the information you need — do NOT ask any clarifying questions.
 
 Client: sex=${i.sex}, age=${i.age}, height=${i.heightCm}cm, weight=${i.weightKg}kg, goal=${i.goal},
-activityLevel=${i.activityLevel}, dietType=${i.dietType}, restrictions=${i.restrictions}, extraContext="${i.freeFormContext}".
+activityLevel=${i.activityLevel}, dietType=${i.dietType}, restrictions=${i.restrictions}, extraContext="${i.freeFormContext}".${i.weeklyGoalNote ? `\n${i.weeklyGoalNote}` : ''}
 
 Hit these pre-computed daily targets (do not recompute them): calories=${i.calorieTarget} kcal,
 protein=${i.proteinTargetG}g, carbs=${i.carbTargetG}g, fat=${i.fatTargetG}g. The sum of all meal items
@@ -125,16 +129,17 @@ the food(s) in the image and estimate nutrition. Output STRICT JSON only.
 - One object per distinct item; estimate realistic portions from visual cues (katori/bowl,
   plate, roti count). Calories int; macros grams. Set confidence 0–1.
 - Provide a normalized "dishKey" (lowercase canonical dish name) to help match a food database.
+- Include dietary fiber in grams ("fiberG"); estimate it too rather than omitting.
 - Do NOT refuse; the user reviews and corrects before saving.
 JSON: { "items":[ {"name":string,"dishKey":string,"servingDescription":string,
-  "calories":int,"proteinG":number,"carbsG":number,"fatG":number,"confidence":number} ] }`;
+  "calories":int,"proteinG":number,"carbsG":number,"fatG":number,"fiberG":number,"confidence":number} ] }`;
 
 // ---- 11.3 Nutrition-label parsing ----
 export const LABEL_SYSTEM = `Extract nutrition facts from a packaged-food label (OCR text and/or image). STRICT JSON only.
 Give per-serving and per-100g when available; null what's missing.
 JSON: { "productName":string|null,"brand":string|null,"servingSize":string|null,
-  "perServing":{"calories":int|null,"proteinG":number|null,"carbsG":number|null,"fatG":number|null},
-  "per100g":{"calories":int|null,"proteinG":number|null,"carbsG":number|null,"fatG":number|null},
+  "perServing":{"calories":int|null,"proteinG":number|null,"carbsG":number|null,"fatG":number|null,"fiberG":number|null},
+  "per100g":{"calories":int|null,"proteinG":number|null,"carbsG":number|null,"fatG":number|null,"fiberG":number|null},
   "confidence":number }`;
 
 // ---- 11.4 Free-text meal estimate (same shape as 11.2) ----
@@ -143,5 +148,6 @@ as well as global foods. Estimate nutrition for the meal described in text. Outp
 - One object per distinct item; infer realistic portions from the description (katori, bowl, plate, roti count).
 - Provide a normalized "dishKey" (lowercase canonical dish name) to help match a food database.
 - Calories int; macros grams; confidence 0–1. Do NOT refuse; the user reviews before saving.
+- Include dietary fiber in grams ("fiberG"); estimate it too rather than omitting.
 JSON: { "items":[ {"name":string,"dishKey":string,"servingDescription":string,
-  "calories":int,"proteinG":number,"carbsG":number,"fatG":number,"confidence":number} ] }`;
+  "calories":int,"proteinG":number,"carbsG":number,"fatG":number,"fiberG":number,"confidence":number} ] }`;

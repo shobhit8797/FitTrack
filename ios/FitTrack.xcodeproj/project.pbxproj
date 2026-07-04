@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		037F533AACC7CEE40DFBA1F8 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 2711D68097E28442DBBD2802 /* FirebaseFirestore */; };
 		0400430A7DA33A1CF7C35420 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = E788D599C5C5A53B171D9CBE /* FirebaseCore */; };
+		099E81BAE1B7113622A93ED4 /* ProfileEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAACA63D0E2163676EA6C82D /* ProfileEditView.swift */; };
 		13074995490D4607703EAE1F /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E079BC24967ED0A7C209756 /* TodayView.swift */; };
 		25A650852B54442AC077E575 /* BarcodeScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2391498B803382A851145E4D /* BarcodeScannerView.swift */; };
 		27B29252DE28C78DD47A09B1 /* CalorieRing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75431485239C1244321E6E89 /* CalorieRing.swift */; };
@@ -53,6 +54,7 @@
 		426EB103A3E171CA32917EE7 /* ProgressDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressDashboardView.swift; sourceTree = "<group>"; };
 		432C05B7330424CD6BBE3E11 /* DietView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DietView.swift; sourceTree = "<group>"; };
 		5A6735886BA43B22C888E4FB /* ImageEncoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageEncoding.swift; sourceTree = "<group>"; };
+		5A9BA009D449DCAD1659B9CD /* FitTrack.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FitTrack.entitlements; sourceTree = "<group>"; };
 		6391E0262BC6116624010535 /* Repository+Progress.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Repository+Progress.swift"; sourceTree = "<group>"; };
 		682A6BB911DFEFA03A71395D /* OnboardingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlow.swift; sourceTree = "<group>"; };
 		6E079BC24967ED0A7C209756 /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
@@ -69,6 +71,7 @@
 		C67CA55778A85F611C01A48E /* Repository+Workout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Repository+Workout.swift"; sourceTree = "<group>"; };
 		CA9383D98285FDE5A505EFF3 /* WorkoutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutView.swift; sourceTree = "<group>"; };
 		D57C89EBB9CC52D44A183611 /* Repository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Repository.swift; sourceTree = "<group>"; };
+		DAACA63D0E2163676EA6C82D /* ProfileEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileEditView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -147,6 +150,7 @@
 		7F3C87DAF757598A78537B9B /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				DAACA63D0E2163676EA6C82D /* ProfileEditView.swift */,
 				202BD2FD19604EA1CB6F64F7 /* SettingsView.swift */,
 			);
 			path = Settings;
@@ -172,6 +176,7 @@
 			isa = PBXGroup;
 			children = (
 				21062746B7E486B1CE18E6BF /* Assets.xcassets */,
+				5A9BA009D449DCAD1659B9CD /* FitTrack.entitlements */,
 				2255B64423771535B6F445DB /* GoogleService-Info.plist */,
 				125578C49FC616DBEE8F83AF /* Info.plist */,
 				9B6942028129A3B4EE98E28C /* App */,
@@ -336,6 +341,7 @@
 				F931EEBCDD1818410842667E /* LabelOCR.swift in Sources */,
 				C116678CDA03EDB20556862D /* LogHubView.swift in Sources */,
 				A0D7A41F077FC6C72967445B /* OnboardingFlow.swift in Sources */,
+				099E81BAE1B7113622A93ED4 /* ProfileEditView.swift in Sources */,
 				93893607FBB9FA387E85B4F8 /* ProgressDashboardView.swift in Sources */,
 				71BEB19EEBF47F78CFAEE217 /* Repository+Progress.swift in Sources */,
 				8B5871242A3BF83424428BF3 /* Repository+Workout.swift in Sources */,
@@ -356,6 +362,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = FitTrack/FitTrack.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = 7MFYAGK3VV;
@@ -496,6 +503,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = FitTrack/FitTrack.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = 7MFYAGK3VV;

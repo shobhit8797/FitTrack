@@ -65,6 +65,26 @@ final class Repository {
         try await recomputeDayRollup(on: date)
     }
 
+    /// Update an existing meal in place. If the edit moves it to a different
+    /// calendar day (the "when" was changed), the document is relocated to that
+    /// day's collection and both days' rollups are recomputed — so day totals
+    /// stay correct on either side of the move.
+    func updateMeal(_ meal: MealEntry, originalDate: Date) async throws {
+        let originalDay = dayId(originalDate)
+        let newDay = dayId(meal.loggedAt)
+        if originalDay == newDay {
+            try mealsCollection(for: meal.loggedAt).document(meal.id).setData(from: meal)
+            try await recomputeDayRollup(on: meal.loggedAt)
+        } else {
+            try await mealsCollection(for: originalDate).document(meal.id).delete()
+            let ref = try mealsCollection(for: meal.loggedAt).document()
+            var moved = meal; moved.id = ref.documentID
+            try ref.setData(from: moved)
+            try await recomputeDayRollup(on: originalDate)
+            try await recomputeDayRollup(on: meal.loggedAt)
+        }
+    }
+
     func mealsStream(for date: Date) -> AsyncThrowingStream<[MealEntry], Error> {
         AsyncThrowingStream { continuation in
             do {
@@ -92,6 +112,7 @@ final class Repository {
             "totalProteinG": meals.reduce(0.0) { $0 + $1.proteinG },
             "totalCarbsG": meals.reduce(0.0) { $0 + $1.carbsG },
             "totalFatG": meals.reduce(0.0) { $0 + $1.fatG },
+            "totalFiberG": meals.reduce(0.0) { $0 + ($1.fiberG ?? 0) },
             "updatedAt": FieldValue.serverTimestamp(),
         ]
         try await userDoc().collection("dayLogs").document(dayId(date))

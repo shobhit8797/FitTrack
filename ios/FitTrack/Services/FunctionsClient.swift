@@ -48,6 +48,13 @@ final class FunctionsClient {
         try await call("completeOnboarding", ["profile": profile], as: OnboardingResult.self)
     }
 
+    /// Persist edits to an existing profile and recompute targets server-side
+    /// (spec §5). Same payload shape as onboarding; returns the fresh targets.
+    /// Does not regenerate plans — the user does that explicitly from Settings.
+    func updateProfile(profile: [String: Any]) async throws -> Targets {
+        try await call("updateProfile", ["profile": profile], as: OnboardingResult.self).targets
+    }
+
     /// Request (or re-request) workout / diet plan generation. Flips the relevant
     /// *PlanStatus to "generating" server-side; the async trigger runs the matching
     /// Lyzr agent and streams the plan + status back into the profile.
@@ -85,7 +92,7 @@ final class FunctionsClient {
 
     struct LabelResult: Decodable {
         struct Macro: Decodable {
-            let calories: Int?; let proteinG: Double?; let carbsG: Double?; let fatG: Double?
+            let calories: Int?; let proteinG: Double?; let carbsG: Double?; let fatG: Double?; let fiberG: Double?
         }
         let productName: String?
         let brand: String?

@@ -10,6 +10,15 @@ final class HealthKitService {
     private let store = HKHealthStore()
     private(set) var authorized = false
 
+    /// Whether the user has connected Apple Health (been through the permission
+    /// sheet at least once). Unlike `authorized` — which only reflects this
+    /// session — this is derived from HealthKit's own request status, so it
+    /// survives relaunches. The dashboard hides its activity tiles until this is
+    /// true, so we never show empty/zero Health metrics to a user who hasn't
+    /// connected. HealthKit deliberately won't reveal per-type *read* grants, so
+    /// "have we ever requested?" is the honest, stable signal we can rely on.
+    private(set) var connected = false
+
     /// Bumped on the main actor whenever an observer query reports new samples
     /// (spec §7.5). Views key a reload off this so the dashboard reflects live
     /// Watch/iPhone data without manual refresh.
@@ -45,7 +54,24 @@ final class HealthKitService {
         guard isAvailable else { return }
         try await store.requestAuthorization(toShare: writeTypes, read: readTypes)
         authorized = true
+        connected = true
         startObserving()
+    }
+
+    /// Refresh `connected` from HealthKit's request status — call at launch so a
+    /// user who connected on a previous run still sees their activity tiles.
+    /// `.unnecessary` means every type has already been requested (i.e. the user
+    /// has been through the permission sheet); `.shouldRequest` means not yet.
+    @MainActor
+    func refreshConnectionState() async {
+        guard isAvailable else { connected = false; return }
+        let status: HKAuthorizationRequestStatus? = try? await withCheckedThrowingContinuation { cont in
+            store.getRequestStatusForAuthorization(toShare: writeTypes, read: readTypes) { status, error in
+                if let error { cont.resume(throwing: error) } else { cont.resume(returning: status) }
+            }
+        }
+        connected = (status == .unnecessary)
+        if connected { startObserving() }
     }
 
     /// Live refresh (spec §7.5): an HKObserverQuery per watched type plus background

@@ -13,6 +13,7 @@ export { analyzeMeal, parseLabel, estimateText } from './ai/handlers';
 // the plan (workoutPlans/current, dietPlans/current); the client streams it in.
 export {
   completeOnboarding,
+  updateProfile,
   recomputeTargets,
   generateWorkoutPlan,
   generateDietPlan,

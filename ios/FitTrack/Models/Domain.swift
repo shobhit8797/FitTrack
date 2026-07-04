@@ -35,12 +35,69 @@ enum Goal: String, Codable, CaseIterable, Identifiable {
         case .maintain: return "Maintain"
         }
     }
+
+    /// Only fat-loss and muscle-gain move weight in a direction, so only they
+    /// take a target weekly rate. Recomp/maintain hold weight steady.
+    var usesWeeklyRate: Bool { self == .fatLoss || self == .muscleGain }
+
+    /// Selectable weekly weight-change magnitudes (kg/week) for this goal, from
+    /// gentle to aggressive. Kept modest and safe — the backend clamps anyway.
+    var weeklyRatePresets: [Double] {
+        switch self {
+        case .fatLoss: return [0.25, 0.5, 0.75, 1.0]
+        case .muscleGain: return [0.125, 0.25, 0.5]
+        default: return []
+        }
+    }
+
+    /// Sensible default rate when the user first picks this goal.
+    var defaultWeeklyRate: Double {
+        switch self {
+        case .fatLoss: return 0.5
+        case .muscleGain: return 0.25
+        default: return 0
+        }
+    }
+
+    /// Pace descriptor for a given rate, e.g. "Steady" / "Aggressive".
+    func weeklyRateName(_ kg: Double) -> String {
+        switch self {
+        case .fatLoss:
+            switch kg {
+            case ..<0.375: return "Gentle"
+            case ..<0.625: return "Steady"
+            case ..<0.875: return "Aggressive"
+            default: return "Rapid"
+            }
+        case .muscleGain:
+            switch kg {
+            case ..<0.1875: return "Lean"
+            case ..<0.375: return "Steady"
+            default: return "Fast"
+            }
+        default: return ""
+        }
+    }
+
+    /// "lose" for a cut, "gain" for a bulk — for user-facing rate copy.
+    var rateVerb: String { self == .muscleGain ? "gain" : "lose" }
 }
 
 enum MealType: String, Codable, CaseIterable, Identifiable {
     case breakfast, lunch, dinner, snack
     var id: String { rawValue }
     var label: String { rawValue.capitalized }
+
+    /// Best-guess meal for the current time of day, used to pre-select the meal
+    /// type when logging — people usually log right after eating.
+    static func suggestedForNow(_ date: Date = Date()) -> MealType {
+        switch Calendar.current.component(.hour, from: date) {
+        case 4..<11: return .breakfast
+        case 11..<16: return .lunch
+        case 16..<22: return .dinner
+        default: return .snack // late night / very early morning
+        }
+    }
 }
 
 enum EntryMethod: String, Codable {
@@ -58,6 +115,9 @@ struct UserProfile: Codable, Equatable {
     var activityLevel: ActivityLevel
     var goal: Goal
     var goalFreeText: String?
+    /// Target weekly weight-change magnitude in kg (nil unless the goal is
+    /// fat-loss or muscle-gain). Drives the calorie target server-side (spec §5).
+    var weeklyWeightChangeKg: Double?
     var bodyFatPct: Double?
     var dietType: String
     var dietaryRestrictions: [String]
@@ -115,6 +175,8 @@ struct MealEntry: Codable, Identifiable, Equatable {
     var proteinG: Double
     var carbsG: Double
     var fatG: Double
+    // Optional so meals logged before fiber tracking existed still decode.
+    var fiberG: Double?
     var servingDescription: String?
     var entryMethod: EntryMethod
     var photoUrl: String?
@@ -251,11 +313,13 @@ struct AnalyzedFoodItem: Codable, Identifiable, Equatable {
     var proteinG: Double
     var carbsG: Double
     var fatG: Double
+    // Optional — the backend may omit fiber; the user can still edit it in.
+    var fiberG: Double?
     var confidence: Double
     var grounded: GroundedMacros?
 
     private enum CodingKeys: String, CodingKey {
-        case name, dishKey, servingDescription, calories, proteinG, carbsG, fatG, confidence, grounded
+        case name, dishKey, servingDescription, calories, proteinG, carbsG, fatG, fiberG, confidence, grounded
     }
 }
 

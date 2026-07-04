@@ -204,7 +204,9 @@ struct MealConfirmationList: View {
     @Environment(Repository.self) private var repo
     @Binding var items: [AnalyzedFoodItem]
     var onSave: () -> Void
-    @State private var mealType: MealType = .lunch
+    // Default the meal type from the current time of day — most logging happens
+    // right after eating, so this is usually already correct (user can change it).
+    @State private var mealType: MealType = MealType.suggestedForNow()
     @State private var date = Date()
     @State private var useGrounded: Set<String> = []
 
@@ -234,14 +236,15 @@ struct MealConfirmationList: View {
                             .keyboardType(.numberPad).multilineTextAlignment(.trailing)
                             .font(.body.weight(.semibold))
                     }
-                    HStack(spacing: Theme.Spacing.m) {
-                        macroPill("P", Int(item.proteinG), Theme.protein)
-                        macroPill("C", Int(item.carbsG), Theme.carbs)
-                        macroPill("F", Int(item.fatG), Theme.fat)
-                    }
-                    .padding(.vertical, 2)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Protein \(Int(item.proteinG)) grams, carbs \(Int(item.carbsG)) grams, fat \(Int(item.fatG)) grams")
+                    // Every macro is editable — the AI/DB estimate is a starting
+                    // point the user corrects before saving (spec §7.3).
+                    macroField("Protein", value: $item.proteinG, color: Theme.protein)
+                    macroField("Carbs", value: $item.carbsG, color: Theme.carbs)
+                    macroField("Fat", value: $item.fatG, color: Theme.fat)
+                    macroField("Fiber", value: Binding(
+                        get: { item.fiberG ?? 0 },
+                        set: { item.fiberG = $0 }
+                    ), color: Theme.carbs)
                     if item.confidence < 0.5 {
                         Label {
                             Text("Low confidence — please double-check these numbers.")
@@ -274,13 +277,24 @@ struct MealConfirmationList: View {
         .selectAllOnFocus()
     }
 
-    private func macroPill(_ label: String, _ grams: Int, _ color: Color) -> some View {
-        HStack(spacing: Theme.Spacing.xs) {
-            Circle().fill(color).frame(width: 7, height: 7)
-            Text("\(label) \(grams)g")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
+    /// One editable macro row: color dot + label on the left, a right-aligned
+    /// grams field. Decimal keypad so users can enter e.g. 4.5 g.
+    private func macroField(_ label: String, value: Binding<Double>, color: Color) -> some View {
+        LabeledContent {
+            HStack(spacing: 2) {
+                TextField(label, value: value, format: .number.precision(.fractionLength(0...1)))
+                    .keyboardType(.decimalPad)
+                    .multilineTextAlignment(.trailing)
+                    .font(.body.weight(.medium))
+                Text("g").foregroundStyle(.secondary)
+            }
+        } label: {
+            HStack(spacing: Theme.Spacing.xs) {
+                Circle().fill(color).frame(width: 7, height: 7)
+                Text(label)
+            }
         }
+        .accessibilityLabel("\(label) in grams")
     }
 
     private func save() async {
@@ -293,6 +307,8 @@ struct MealConfirmationList: View {
                 proteinG: useG ? (g?.proteinG ?? item.proteinG) : item.proteinG,
                 carbsG: useG ? (g?.carbsG ?? item.carbsG) : item.carbsG,
                 fatG: useG ? (g?.fatG ?? item.fatG) : item.fatG,
+                // Fiber isn't grounded by the food DB — keep the edited value.
+                fiberG: item.fiberG,
                 servingDescription: item.servingDescription,
                 entryMethod: g != nil && useG ? .foodDB : .llm,
                 photoUrl: nil, barcode: nil, foodDbId: g?.foodDbId, confidence: item.confidence
@@ -531,6 +547,7 @@ enum FoodCaptureMapping {
             proteinG: m.proteinG ?? 0,
             carbsG: m.carbsG ?? 0,
             fatG: m.fatG ?? 0,
+            fiberG: m.fiberG,
             confidence: 0.9,
             grounded: nil
         )
@@ -547,6 +564,7 @@ enum FoodCaptureMapping {
             proteinG: m.proteinG ?? 0,
             carbsG: m.carbsG ?? 0,
             fatG: m.fatG ?? 0,
+            fiberG: m.fiberG,
             confidence: label.confidence,
             grounded: nil
         )

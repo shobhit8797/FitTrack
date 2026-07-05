@@ -8,6 +8,11 @@ setGlobalOptions({ region: 'us-central1', maxInstances: 20 });
 // Plan generation moved to the Lyzr agents (see users/* below).
 export { analyzeMeal, parseLabel, estimateText } from './ai/handlers';
 
+// Diet coach chat + 7-day plan generation (Gemini/OpenRouter). A conversational
+// surface where the user describes what they want, then generates a weekly plan
+// into dietPlans/current (streamed into the Diet tab like any other plan).
+export { dietCoachReply, generateDietPlanFromChat } from './ai/dietCoach';
+
 // Users / onboarding / targets (spec §4–5) + on-demand plan generation.
 // generateWorkoutPlan / generateDietPlan run the Lyzr agents inline and persist
 // the plan (workoutPlans/current, dietPlans/current); the client streams it in.

@@ -23,6 +23,7 @@ final class Repository {
 
     // MARK: Profile
     func fetchProfile() async throws -> UserProfile? {
+        if Demo.isActive { return DemoData.profile }
         let snap = try await userDoc().getDocument()
         guard snap.exists else { return nil }
         return try snap.data(as: UserProfile.self)
@@ -30,7 +31,8 @@ final class Repository {
 
     /// Live profile updates (targets land here once generated server-side).
     func profileStream() -> AsyncThrowingStream<UserProfile?, Error> {
-        AsyncThrowingStream { continuation in
+        if Demo.isActive { return Demo.stream(DemoData.profile) }
+        return AsyncThrowingStream { continuation in
             guard let uid else {
                 continuation.finish(throwing: RepoError.notSignedIn); return
             }
@@ -54,6 +56,7 @@ final class Repository {
     }
 
     func addMeal(_ meal: MealEntry, on date: Date) async throws {
+        if Demo.isActive { return }
         let ref = try mealsCollection(for: date).document()
         var m = meal; m.id = ref.documentID
         try ref.setData(from: m)
@@ -61,6 +64,7 @@ final class Repository {
     }
 
     func deleteMeal(_ id: String, on date: Date) async throws {
+        if Demo.isActive { return }
         try await mealsCollection(for: date).document(id).delete()
         try await recomputeDayRollup(on: date)
     }
@@ -70,6 +74,7 @@ final class Repository {
     /// day's collection and both days' rollups are recomputed — so day totals
     /// stay correct on either side of the move.
     func updateMeal(_ meal: MealEntry, originalDate: Date) async throws {
+        if Demo.isActive { return }
         let originalDay = dayId(originalDate)
         let newDay = dayId(meal.loggedAt)
         if originalDay == newDay {
@@ -86,7 +91,8 @@ final class Repository {
     }
 
     func mealsStream(for date: Date) -> AsyncThrowingStream<[MealEntry], Error> {
-        AsyncThrowingStream { continuation in
+        if Demo.isActive { return Demo.stream(DemoData.meals(for: date)) }
+        return AsyncThrowingStream { continuation in
             do {
                 let reg = try mealsCollection(for: date)
                     .order(by: "loggedAt")
@@ -117,17 +123,20 @@ final class Repository {
         ]
         try await userDoc().collection("dayLogs").document(dayId(date))
             .setData(rollup, merge: true)
+        if Calendar.current.isDateInToday(date) { refreshWidgetSnapshot() }
     }
 
     // MARK: Weight
     func addWeight(_ entry: WeightEntry) async throws {
+        if Demo.isActive { return }
         let ref = try userDoc().collection("weightEntries").document()
         var e = entry; e.id = ref.documentID
         try ref.setData(from: e)
     }
 
     func weightStream() -> AsyncThrowingStream<[WeightEntry], Error> {
-        AsyncThrowingStream { continuation in
+        if Demo.isActive { return Demo.stream(DemoData.weights) }
+        return AsyncThrowingStream { continuation in
             do {
                 let reg = try userDoc().collection("weightEntries")
                     .order(by: "date", descending: true)
@@ -143,6 +152,7 @@ final class Repository {
 
     // MARK: Workout plan + sessions
     func fetchCurrentPlan() async throws -> WorkoutPlan? {
+        if Demo.isActive { return DemoData.workoutPlan }
         let snap = try await userDoc().collection("workoutPlans").document("current").getDocument()
         guard snap.exists else { return nil }
         return try snap.data(as: WorkoutPlan.self)
@@ -151,7 +161,8 @@ final class Repository {
     /// Live current-plan updates. The plan is generated asynchronously after
     /// onboarding, so the Workout tab streams it in rather than fetching once.
     func planStream() -> AsyncThrowingStream<WorkoutPlan?, Error> {
-        AsyncThrowingStream { continuation in
+        if Demo.isActive { return Demo.stream(DemoData.workoutPlan) }
+        return AsyncThrowingStream { continuation in
             guard let uid else {
                 continuation.finish(throwing: RepoError.notSignedIn); return
             }
@@ -168,6 +179,7 @@ final class Repository {
 
     // MARK: Diet plan
     func fetchCurrentDietPlan() async throws -> DietPlan? {
+        if Demo.isActive { return DemoData.dietPlan }
         let snap = try await userDoc().collection("dietPlans").document("current").getDocument()
         guard snap.exists else { return nil }
         return try snap.data(as: DietPlan.self)
@@ -176,7 +188,8 @@ final class Repository {
     /// Live current diet-plan updates. Generated asynchronously after the user
     /// requests it, so the Diet tab streams it in rather than fetching once.
     func dietPlanStream() -> AsyncThrowingStream<DietPlan?, Error> {
-        AsyncThrowingStream { continuation in
+        if Demo.isActive { return Demo.stream(DemoData.dietPlan) }
+        return AsyncThrowingStream { continuation in
             guard let uid else {
                 continuation.finish(throwing: RepoError.notSignedIn); return
             }
@@ -192,13 +205,19 @@ final class Repository {
     }
 
     func addSession(_ session: WorkoutSession) async throws {
+        if Demo.isActive { return }
         let ref = try userDoc().collection("workoutSessions").document()
         var s = session; s.id = ref.documentID
         try ref.setData(from: s)
+        // Saving a workout is the clock-out: clear the widget's gym clock and
+        // cancel its pending "still at the gym?" reminder.
+        GymClock.end()
+        refreshWidgetSnapshot()
     }
 
     func sessionsStream() -> AsyncThrowingStream<[WorkoutSession], Error> {
-        AsyncThrowingStream { continuation in
+        if Demo.isActive { return Demo.stream(DemoData.sessions) }
+        return AsyncThrowingStream { continuation in
             do {
                 let reg = try userDoc().collection("workoutSessions")
                     .order(by: "date", descending: true)

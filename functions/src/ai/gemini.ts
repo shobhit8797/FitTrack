@@ -29,14 +29,18 @@ export class GeminiProvider implements LLMProvider {
     };
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent`;
-    const res = await fetchWithRetry(url, {
-      method: 'POST',
-      headers: {
-        'x-goog-api-key': this.apiKey,
-        'Content-Type': 'application/json',
+    const res = await fetchWithRetry(
+      url,
+      {
+        method: 'POST',
+        headers: {
+          'x-goog-api-key': this.apiKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
       },
-      body: JSON.stringify(body),
-    });
+      { timeoutMs: req.timeoutMs, retries: req.maxRetries },
+    );
 
     const json = (await res.json()) as {
       candidates?: {

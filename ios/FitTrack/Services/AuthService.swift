@@ -28,10 +28,21 @@ final class AuthService {
     private var handle: AuthStateDidChangeListenerHandle?
 
     init() {
+        // Demo mode: present a signed-in "Alex" without touching Firebase Auth so
+        // the marketing walkthrough lands straight on the populated main tabs.
+        if Demo.isActive {
+            uid = "demo"
+            isSignedIn = true
+            displayName = "Alex"
+            return
+        }
         handle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
             self?.uid = user?.uid
             self?.isSignedIn = user != nil
             self?.displayName = user?.displayName
+            // Signed out: blank the home-screen widgets rather than leave the
+            // previous account's numbers on the home screen.
+            if user == nil { Repository.clearWidgetSnapshot() }
         }
     }
 

@@ -19,6 +19,12 @@ export interface LLMRequest {
   /** Soft cap on output tokens. */
   maxTokens?: number;
   temperature?: number;
+  /** Per-request fetch timeout override (ms). Defaults to the transport's 30s.
+   * Raise for large generations (e.g. a full 7-day diet plan). */
+  timeoutMs?: number;
+  /** Per-request retry override. Defaults to the transport's 3. Lower it for
+   * long-timeout calls so the worst case stays under the function budget. */
+  maxRetries?: number;
 }
 
 export interface LLMResponse {

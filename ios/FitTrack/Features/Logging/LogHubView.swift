@@ -8,6 +8,8 @@ import UIKit
 // never auto-saved.
 struct LogHubView: View {
     @Environment(Repository.self) private var repo
+    // Optional: the hub also renders in previews without an AppState around.
+    @Environment(AppState.self) private var appState: AppState?
     @Environment(\.dismiss) private var dismiss
     @State private var route: LogRoute?
     // Workout logging: stream the plan so we can offer its days, then log a
@@ -81,6 +83,8 @@ struct LogHubView: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        // A widget-preselected meal type only applies to this hub session.
+        .onDisappear { appState?.pendingMealType = nil }
     }
 
     /// Mirror of Today's old workout shortcut: if today is a scheduled training
@@ -88,8 +92,7 @@ struct LogHubView: View {
     /// pick (the dialog also surfaces the "generate a plan" hint when empty).
     private func startWorkoutLog() {
         guard let plan, !plan.days.isEmpty else { showWorkoutPicker = true; return }
-        let weekday = Calendar.current.component(.weekday, from: Date()) - 1 // 0=Sun
-        if plan.scheduledWeekdays.contains(weekday), plan.days.count == 1 {
+        if plan.isScheduled(), plan.days.count == 1 {
             workoutDay = plan.days[0]
         } else {
             showWorkoutPicker = true
@@ -202,6 +205,7 @@ struct MealTextEntrySheet: View {
 /// drops items, then saves (spec §7.3). Photo/barcode/label sheets reuse this.
 struct MealConfirmationList: View {
     @Environment(Repository.self) private var repo
+    @Environment(AppState.self) private var appState: AppState?
     @Binding var items: [AnalyzedFoodItem]
     var onSave: () -> Void
     // Default the meal type from the current time of day — most logging happens
@@ -275,6 +279,14 @@ struct MealConfirmationList: View {
             }
         }
         .selectAllOnFocus()
+        // A widget deep link (fittrack://log/meal?type=…) beats the time-of-day
+        // guess; consume it so later logs fall back to the suggestion again.
+        .onAppear {
+            if let pending = appState?.pendingMealType {
+                mealType = pending
+                appState?.pendingMealType = nil
+            }
+        }
     }
 
     /// One editable macro row: color dot + label on the left, a right-aligned

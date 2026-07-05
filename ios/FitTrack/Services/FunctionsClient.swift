@@ -70,6 +70,23 @@ final class FunctionsClient {
         try await call("generateDietPlan", [:], as: DietPlanStatusResult.self).dietPlanStatus
     }
 
+    // MARK: Diet coach chat (build a 7-day plan by chatting)
+    struct CoachReply: Decodable { let reply: String; let readyToGenerate: Bool }
+
+    /// One conversational turn. The full transcript is relayed each call (the
+    /// backend is stateless); returns the coach's reply + whether it's ready to build.
+    func dietCoachReply(messages: [[String: String]]) async throws -> CoachReply {
+        try await call("dietCoachReply", ["messages": messages], as: CoachReply.self)
+    }
+
+    /// Generate a 7-day plan from the planning transcript. Flips dietPlanStatus
+    /// server-side and writes dietPlans/current; the Diet tab streams it in.
+    @discardableResult
+    func generateDietPlanFromChat(messages: [[String: String]]) async throws -> String {
+        try await call("generateDietPlanFromChat", ["messages": messages],
+                       as: DietPlanStatusResult.self).dietPlanStatus
+    }
+
     struct TargetsResult: Decodable { let targets: Targets }
     func recomputeTargets(inputs: [String: Any]) async throws -> Targets {
         try await call("recomputeTargets", ["inputs": inputs], as: TargetsResult.self).targets

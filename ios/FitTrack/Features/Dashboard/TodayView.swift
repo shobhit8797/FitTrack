@@ -167,11 +167,7 @@ struct TodayView: View {
         }
     }
 
-    private var todayIsScheduled: Bool {
-        guard let plan else { return false }
-        let weekday = Calendar.current.component(.weekday, from: Date()) - 1 // 0=Sun
-        return plan.scheduledWeekdays.contains(weekday)
-    }
+    private var todayIsScheduled: Bool { plan?.isScheduled() ?? false }
 
     private func startGym(plan: WorkoutPlan) {
         if plan.days.count == 1 {
@@ -564,6 +560,8 @@ final class TodayViewModel {
         steps = metrics.steps
         activeEnergy = metrics.activeEnergyKcal
         exerciseMinutes = metrics.exerciseMinutes
+
+        if Calendar.current.isDateInToday(date) { repo.refreshWidgetSnapshot() }
 
         do {
             for try await meals in repo.mealsStream(for: date) {

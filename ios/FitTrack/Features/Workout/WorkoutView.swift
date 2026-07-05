@@ -5,6 +5,7 @@ import SwiftUI
 struct WorkoutView: View {
     @Environment(Repository.self) private var repo
     @Environment(FunctionsClient.self) private var functions
+    @Environment(AppState.self) private var appState
     @State private var plan: WorkoutPlan?
     @State private var planStatus: String?
     @State private var planError: String?
@@ -23,11 +24,7 @@ struct WorkoutView: View {
         return plan.days.first { $0.id == selectedDayID } ?? plan.days.first
     }
 
-    private var todayIsScheduled: Bool {
-        guard let plan else { return false }
-        let weekday = Calendar.current.component(.weekday, from: Date()) - 1 // 0=Sun
-        return plan.scheduledWeekdays.contains(weekday)
-    }
+    private var todayIsScheduled: Bool { plan?.isScheduled() ?? false }
 
     var body: some View {
         NavigationStack {
@@ -35,7 +32,7 @@ struct WorkoutView: View {
                 if let plan {
                     ScrollView {
                         VStack(alignment: .leading, spacing: Theme.Spacing.m) {
-                            StatusHeader(scheduled: todayIsScheduled, streak: streak())
+                            StatusHeader(scheduled: todayIsScheduled, streak: sessions.currentStreak)
 
                             // Pick a day from the bubbles instead of scrolling the plan.
                             DayBubbleSelector(days: plan.days, selection: $selectedDayID, namespace: bubbleNS)
@@ -96,6 +93,7 @@ struct WorkoutView: View {
                             withAnimation(reduceMotion ? nil : .snappy) { plan = p }
                             // Default the bubble selection to the first day on first load.
                             if selectedDayID == nil { selectedDayID = p?.days.first?.id }
+                            consumePendingWorkoutLog()
                         }
                     } catch {}
                 }()
@@ -117,7 +115,19 @@ struct WorkoutView: View {
             .fullScreenCover(item: $loggingDay) { day in
                 WorkoutSessionView(day: day)
             }
+            .onChange(of: appState.pendingWorkoutLog) { _, pending in
+                if pending { consumePendingWorkoutLog() }
+            }
         }
+    }
+
+    /// Deep link (fittrack://log/workout): jump straight into gym mode when the
+    /// plan has one obvious session; otherwise just land on this tab so the
+    /// user picks a day themselves.
+    private func consumePendingWorkoutLog() {
+        guard appState.pendingWorkoutLog, let plan, !plan.days.isEmpty else { return }
+        appState.pendingWorkoutLog = false
+        if plan.days.count == 1 { loggingDay = plan.days[0] }
     }
 
     private func retry() async {
@@ -133,17 +143,6 @@ struct WorkoutView: View {
         }
     }
 
-    private func streak() -> Int {
-        // Count consecutive prior days (incl. today) with a session.
-        let days = Set(sessions.map { Calendar.current.startOfDay(for: $0.date) })
-        var count = 0
-        var cursor = Calendar.current.startOfDay(for: Date())
-        while days.contains(cursor) {
-            count += 1
-            cursor = Calendar.current.date(byAdding: .day, value: -1, to: cursor)!
-        }
-        return count
-    }
 }
 
 /// Horizontal row of day "bubbles" pinned above the card. Tapping a bubble
@@ -454,7 +453,10 @@ struct WorkoutSessionView: View {
     let day: WorkoutDay
 
     @State private var logs: [ExerciseSessionLog] = []
-    @State private var startedAt = Date()
+    // If the widget's gym clock is running (clock-out path), the session starts
+    // at clock-in so the timer and saved duration reflect real gym time.
+    @State private var startedAt = GymClock.startedAt ?? Date()
+    @State private var fromGymClock = GymClock.isActive
     @State private var saving = false
     @State private var showDiscardConfirm = false
     // Checked-off warm-up / cool-down items (kept local; not saved as sets).
@@ -530,6 +532,11 @@ struct WorkoutSessionView: View {
                         .foregroundStyle(Theme.accentTeal)
                     Text(startedAt, style: .timer)
                         .monospacedDigit()
+                    if fromGymClock {
+                        // Explains why the timer didn't start at 0:00.
+                        Text("at the gym since \(startedAt.formatted(date: .omitted, time: .shortened))")
+                            .font(.caption)
+                    }
                 }
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.secondary)
@@ -598,7 +605,7 @@ struct WorkoutSessionView: View {
                                         rpe: nil, setIndex: i))
             }
         }
-        let session = WorkoutSession(id: "", date: Date(), dayLabel: day.dayLabel,
+        let session = WorkoutSession(id: "", date: startedAt, dayLabel: day.dayLabel,
                                      loggedSets: logged, note: nil)
         try? await repo.addSession(session)
         Haptics.success()

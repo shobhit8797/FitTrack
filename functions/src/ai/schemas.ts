@@ -58,6 +58,29 @@ export interface DietPlanResult {
   notes: string;
 }
 
+/** One day of a 7-day plan: its meals plus that day's macro totals + a tip. */
+export interface DietDayResult {
+  day: string;
+  order: number;
+  meals: DietMeal[];
+  dailyCalories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  note: string;
+}
+/** A 7-day plan. Extends the single-day shape (top-level fields act as a hero +
+ * legacy fallback) with a per-day breakdown the client renders via a day picker. */
+export interface WeeklyDietPlanResult extends DietPlanResult {
+  days: DietDayResult[];
+}
+
+/** The diet-coach's conversational turn. */
+export interface CoachReply {
+  reply: string;
+  readyToGenerate: boolean;
+}
+
 export interface FoodItem {
   name: string;
   dishKey: string;
@@ -141,11 +164,9 @@ export function validatePlan(v: unknown): WorkoutPlanResult {
   };
 }
 
-export function validateDietPlan(v: unknown): DietPlanResult {
-  if (!isObj(v) || !Array.isArray(v.meals)) {
-    throw new LLMError('AI diet plan missing meals', undefined, false);
-  }
-  const meals: DietMeal[] = v.meals.map((m, mi) => {
+/** Validate a list of meals (shared by the single-day and 7-day plan shapes). */
+function validateMeals(v: unknown): DietMeal[] {
+  return (Array.isArray(v) ? v : []).map((m, mi) => {
     const meal = isObj(m) ? m : {};
     const items = Array.isArray(meal.items) ? meal.items : [];
     return {
@@ -164,23 +185,83 @@ export function validateDietPlan(v: unknown): DietPlanResult {
       }),
     };
   });
+}
+
+/** Sum a macro across a day's meals — used to backfill missing rollups. */
+function sumMeals(meals: DietMeal[], pick: (i: DietFoodItem) => number): number {
+  return meals.reduce((acc, m) => acc + m.items.reduce((a, it) => a + pick(it), 0), 0);
+}
+
+export function validateDietPlan(v: unknown): DietPlanResult {
+  if (!isObj(v) || !Array.isArray(v.meals)) {
+    throw new LLMError('AI diet plan missing meals', undefined, false);
+  }
+  const meals = validateMeals(v.meals);
   // Prefer the agent's stated totals; fall back to summing the items so the UI
   // always has a sane daily figure even if the agent omits the rollup.
-  const sum = (pick: (i: DietFoodItem) => number) =>
-    meals.reduce((acc, m) => acc + m.items.reduce((a, it) => a + pick(it), 0), 0);
   return {
     planName: str(v.planName, 'Your Meal Plan'),
     summary: str(v.summary),
-    dailyCalories: Math.round(num(v.dailyCalories, sum((i) => i.calories))),
-    proteinG: Math.round(num(v.proteinG, sum((i) => i.proteinG))),
-    carbsG: Math.round(num(v.carbsG, sum((i) => i.carbsG))),
-    fatG: Math.round(num(v.fatG, sum((i) => i.fatG))),
+    dailyCalories: Math.round(num(v.dailyCalories, sumMeals(meals, (i) => i.calories))),
+    proteinG: Math.round(num(v.proteinG, sumMeals(meals, (i) => i.proteinG))),
+    carbsG: Math.round(num(v.carbsG, sumMeals(meals, (i) => i.carbsG))),
+    fatG: Math.round(num(v.fatG, sumMeals(meals, (i) => i.fatG))),
     meals,
     hydrationNote: str(v.hydrationNote),
     groceryList: Array.isArray(v.groceryList)
       ? v.groceryList.filter((s): s is string => typeof s === 'string')
       : [],
     notes: str(v.notes),
+  };
+}
+
+const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+export function validateWeeklyDietPlan(v: unknown): WeeklyDietPlanResult {
+  if (!isObj(v) || !Array.isArray(v.days) || v.days.length === 0) {
+    throw new LLMError('AI diet plan missing days', undefined, false);
+  }
+  const days: DietDayResult[] = v.days.map((d, di) => {
+    const day = isObj(d) ? d : {};
+    const meals = validateMeals(day.meals);
+    return {
+      day: str(day.day, WEEKDAYS[di] ?? `Day ${di + 1}`),
+      order: num(day.order, di),
+      meals,
+      dailyCalories: Math.round(num(day.dailyCalories, sumMeals(meals, (i) => i.calories))),
+      proteinG: Math.round(num(day.proteinG, sumMeals(meals, (i) => i.proteinG))),
+      carbsG: Math.round(num(day.carbsG, sumMeals(meals, (i) => i.carbsG))),
+      fatG: Math.round(num(day.fatG, sumMeals(meals, (i) => i.fatG))),
+      note: str(day.note),
+    };
+  });
+  days.sort((a, b) => a.order - b.order);
+  // Top-level fields double as the hero + a fallback for any single-day renderer:
+  // macros are the weekly average; meals default to the first day.
+  const avg = (pick: (d: DietDayResult) => number) =>
+    Math.round(days.reduce((acc, d) => acc + pick(d), 0) / days.length);
+  return {
+    planName: str(v.planName, 'Your 7-Day Plan'),
+    summary: str(v.summary),
+    dailyCalories: avg((d) => d.dailyCalories),
+    proteinG: avg((d) => d.proteinG),
+    carbsG: avg((d) => d.carbsG),
+    fatG: avg((d) => d.fatG),
+    meals: days[0]?.meals ?? [],
+    hydrationNote: str(v.hydrationNote),
+    groceryList: Array.isArray(v.groceryList)
+      ? v.groceryList.filter((s): s is string => typeof s === 'string')
+      : [],
+    notes: str(v.notes),
+    days,
+  };
+}
+
+export function validateCoachReply(v: unknown): CoachReply {
+  const o = isObj(v) ? v : {};
+  return {
+    reply: str(o.reply, "Tell me a bit about what you'd like to eat this week."),
+    readyToGenerate: o.readyToGenerate === true,
   };
 }
 

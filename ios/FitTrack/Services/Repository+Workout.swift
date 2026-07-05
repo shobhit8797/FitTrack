@@ -11,6 +11,7 @@ extension Repository {
     /// Scans the last ~20 sessions (date desc) and returns the matching set list
     /// sorted by `setIndex`. Returns `[]` if no prior session has the exercise.
     func lastSets(forExerciseNamed name: String) async -> [LoggedSet] {
+        if Demo.isActive { return DemoData.lastSets(named: name) }
         do {
             let snap = try await userDoc().collection("workoutSessions")
                 .order(by: "date", descending: true)

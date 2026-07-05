@@ -26,6 +26,12 @@
 				<string>com.googleusercontent.apps.656562200709-e7d4ppc0qlgef532589mj0opg3219iub</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>fittrack</string>
+			</array>
+		</dict>
 	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
@@ -41,5 +47,11 @@
 	<string>FitTrack lets you pick a meal photo from your library to estimate its nutrition.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
+	<key>UIRequiresFullScreen</key>
+	<true/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
 </dict>
 </plist>

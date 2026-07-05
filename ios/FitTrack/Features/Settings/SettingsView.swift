@@ -19,6 +19,18 @@ struct SettingsView: View {
     @State private var dietStatus: String?
     @State private var profile: UserProfile?
     @State private var working: Set<String> = []
+    @State private var reminders: [SupplementReminder] = []
+
+    /// One-line recap for the Reminders row: how many are active.
+    private var remindersSummary: String {
+        let active = reminders.filter(\.enabled).count
+        switch (reminders.count, active) {
+        case (0, _): return "Supplements & medications"
+        case (_, 0): return "All paused"
+        case (_, 1): return "1 active reminder"
+        default: return "\(active) active reminders"
+        }
+    }
 
     /// The name shown on the account card. Prefer the freshly-streamed profile
     /// name (updates the instant an edit is saved) over the cached auth name.
@@ -79,6 +91,28 @@ struct SettingsView: View {
                     Text("Plans")
                 } footer: {
                     Text("Generate a workout plan, a diet plan, or both. Each is built from your profile by your AI coach and appears in its tab.")
+                }
+
+                Section {
+                    NavigationLink {
+                        RemindersView()
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Reminders")
+                                Text(remindersSummary)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "bell.badge.fill")
+                                .foregroundStyle(Theme.accentTeal)
+                        }
+                    }
+                } header: {
+                    Text("Reminders")
+                } footer: {
+                    Text("Get notified to take your supplements and medications. Add what you take and the times that suit you.")
                 }
 
                 Section("Apple Health") {
@@ -149,6 +183,13 @@ struct SettingsView: View {
                         profile = streamed
                         workoutStatus = streamed?.workoutPlanStatus
                         dietStatus = streamed?.dietPlanStatus
+                    }
+                } catch {}
+            }
+            .task {
+                do {
+                    for try await streamed in repo.remindersStream() {
+                        reminders = streamed
                     }
                 } catch {}
             }

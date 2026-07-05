@@ -9,7 +9,8 @@ extension Repository {
     /// Live day-log rollups (calories + macros + health metrics), oldest→newest.
     /// Feeds the calories-vs-target and macro-adherence charts (spec §7.6).
     func dayLogsStream() -> AsyncThrowingStream<[DayLog], Error> {
-        AsyncThrowingStream { continuation in
+        if Demo.isActive { return Demo.stream(DemoData.dayLogs) }
+        return AsyncThrowingStream { continuation in
             do {
                 let reg = try userDoc().collection("dayLogs")
                     .order(by: "date")

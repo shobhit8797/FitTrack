@@ -77,7 +77,7 @@ xcodebuild archive \
     -authenticationKeyID "$API_KEY_ID" \
     -authenticationKeyIssuerID "263d00d5-4518-4789-886d-018f6c735afe" \
     DEVELOPMENT_TEAM="$TEAM_ID" \
-    PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
+    APP_BUNDLE_ID="$BUNDLE_ID" \
     2>&1 | tee "$OUTPUT_DIR/build.log" \
     | grep -E "^(Build|Archive|Compile|Link|Sign|Copy|error:|warning:|\*\*)" || true
 

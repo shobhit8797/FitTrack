@@ -5,6 +5,20 @@ options:
     iOS: "17.0"
   createIntermediateGroups: true
 
+# Shared by the app and the widget extension. CURRENT_PROJECT_VERSION must
+# live here (single occurrence) so sign_and_build.sh's sed bump keeps both
+# targets on the same build number.
+settings:
+  base:
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "14"
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1"   # iPhone
+    DEVELOPMENT_TEAM: 7MFYAGK3VV
+    # Release builds override this to com.shobhit.fittrack via the command
+    # line (sign_and_build.sh); the widget derives its bundle ID from it.
+    APP_BUNDLE_ID: com.fittrack.FitTrack
+
 packages:
   Firebase:
     url: https://github.com/firebase/firebase-ios-sdk
@@ -32,19 +46,28 @@ targets:
         product: FirebaseFunctions
       - package: GoogleSignIn
         product: GoogleSignIn
+      # Embeds the widget extension into the app bundle (PlugIns/) so the
+      # widgets are actually installed with the app.
+      - target: FitTrackWidgets
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.fittrack.FitTrack
-        MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: "3"
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_ID)
         GENERATE_INFOPLIST_FILE: YES
-        SWIFT_VERSION: "5.0"
-        TARGETED_DEVICE_FAMILY: "1"   # iPhone
-        DEVELOPMENT_TEAM: 7MFYAGK3VV
+      # Release archives sign manually with pre-created App Store profiles
+      # (the widget extension needs its own profile; headless auto-signing
+      # can't create one). Debug/simulator builds stay unsigned/automatic.
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Apple Distribution"
+          DEVELOPMENT_TEAM: 7MFYAGK3VV
+          PROVISIONING_PROFILE_SPECIFIER: "FitTrack App Store"
     entitlements:
       path: FitTrack/FitTrack.entitlements
       properties:
         com.apple.developer.healthkit: true
+        com.apple.security.application-groups:
+          - group.com.shobhit.fittrack
     info:
       path: FitTrack/Info.plist
       properties:
@@ -56,6 +79,80 @@ targets:
         CFBundleIconName: AppIcon
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
+        # iPhone-only portrait app; declaring full-screen exempts it from the
+        # iPad-multitasking "all orientations required" App Store validation.
+        UIRequiresFullScreen: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
         CFBundleURLTypes:
           - CFBundleURLSchemes:
               - com.googleusercontent.apps.656562200709-e7d4ppc0qlgef532589mj0opg3219iub
+          - CFBundleURLSchemes:
+              - fittrack   # widget deep links (fittrack://log/meal, fittrack://log/workout)
+
+  # Home-screen widget extension (WidgetKit). Embedded into the app via the
+  # app target's dependency above. Bundle ID is $(APP_BUNDLE_ID).Widgets so it
+  # nests under the app's ID for both dev (com.fittrack.FitTrack.Widgets) and
+  # release (com.shobhit.fittrack.Widgets) builds.
+  FitTrackWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: FitTrackWidgets
+      # Snapshot/model types shared with the app (App Group serialization).
+      - path: FitTrack/Shared/WidgetShared.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_ID).Widgets
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: FitTrackWidgets/Info.plist
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Apple Distribution"
+          DEVELOPMENT_TEAM: 7MFYAGK3VV
+          PROVISIONING_PROFILE_SPECIFIER: "FitTrack Widgets App Store"
+    entitlements:
+      path: FitTrackWidgets/FitTrackWidgets.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.shobhit.fittrack
+
+  # UI-test target used only to drive the seeded demo walkthrough for a screen
+  # recording (see FitTrackUITests/DemoWalkthrough.swift). Not part of the
+  # release build/scheme.
+  FitTrackUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: FitTrackUITests
+    dependencies:
+      - target: FitTrack
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.fittrack.FitTrackUITests
+        TEST_TARGET_NAME: FitTrack
+
+# Once any scheme is declared here, xcodebuild no longer sees autocreated
+# schemes — so the release scheme must be explicit for sign_and_build.sh.
+schemes:
+  FitTrack:
+    build:
+      targets:
+        FitTrack: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+  FitTrackDemo:
+    build:
+      targets:
+        FitTrack: all
+        FitTrackUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - FitTrackUITests

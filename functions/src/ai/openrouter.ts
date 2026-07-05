@@ -38,16 +38,20 @@ export class OpenRouterProvider implements LLMProvider {
     };
     if (req.jsonObject) body.response_format = { type: 'json_object' };
 
-    const res = await fetchWithRetry(ENDPOINT, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': this.referer,
-        'X-Title': this.title,
+    const res = await fetchWithRetry(
+      ENDPOINT,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': this.referer,
+          'X-Title': this.title,
+        },
+        body: JSON.stringify(body),
       },
-      body: JSON.stringify(body),
-    });
+      { timeoutMs: req.timeoutMs, retries: req.maxRetries },
+    );
 
     const json = (await res.json()) as {
       choices?: { message?: { content?: string } }[];

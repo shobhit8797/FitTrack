@@ -50,7 +50,7 @@ bash ios/check_status.sh
 | Backup of certs + profile | `~/Desktop/FitTrack_Certs/` (also in `~/Downloads/FitTrack_Certs/` on the lappy Mac) |
 | Firebase functions env (agent IDs) | `functions/.env` (gitignored — copy between machines manually) |
 | Apple Distribution cert | Keychain: `Apple Distribution: subrahmanya s hegde (7MFYAGK3VV)` |
-| Provisioning profile | `~/Library/MobileDevice/Provisioning Profiles/e4bac8c2-341b-45d8-8015-c77465c1dd5b.mobileprovision` (expires 2027) |
+| Release provisioning profiles | Two App Store profiles the release archive signs with manually: **"FitTrack App Store"** (`com.shobhit.fittrack`) + **"FitTrack Widgets App Store"** (`com.shobhit.fittrack.Widgets`), both in `~/Library/MobileDevice/Provisioning Profiles/`. Regenerate/install with `python3 ios/create_profiles.py`. |
 
 ### App Store Connect details
 | Field | Value |
@@ -81,13 +81,14 @@ npm run deploy        # = tsc build + firebase deploy --only functions
    - `FitTrack_Certs/` backup folder (p12 + provisioning profile)
 3. Import the signing cert: `security import AppleDistribution_7MFYAGK3VV.p12 -k ~/Library/Keychains/login.keychain-db -T /usr/bin/codesign` (prompts for the p12 password).
 4. If `security find-identity -v -p codesigning` shows **0 valid identities**, the Apple WWDR G3 intermediate is missing: download `https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer` and `security import` it.
-5. Install the profile: `cp FitTrack_AppStore_7MFYAGK3VV.mobileprovision ~/Library/MobileDevice/"Provisioning Profiles"/<UUID>.mobileprovision` (UUID via `security cms -D -i <profile> | plutil -extract UUID raw -o - -`).
-6. `python3 -m pip install --user PyJWT cryptography` (for the build-number auto-bump + status script).
+5. `python3 -m pip install --user PyJWT cryptography` (for the build-number auto-bump, status script, and profile creation).
+6. Create + install the release provisioning profiles: `python3 ios/create_profiles.py` (needs the API key from step 2 and the App IDs/App Group registered in the portal). This replaces manually copying a `.mobileprovision`.
 7. `npx firebase-tools login` for backend deploys.
 
 ## Important notes
-- `PRODUCT_BUNDLE_IDENTIFIER` in `project.yml` stays as `com.fittrack.FitTrack` — the build script overrides it to `com.shobhit.fittrack` at build time. **Do not change this.**
-- Xcode GUI shows a signing warning (no provisioning profile) — this is expected and harmless; the script uses API key auth, not Xcode GUI signing.
+- Bundle IDs are driven by the `APP_BUNDLE_ID` build setting (defaults to `com.fittrack.FitTrack` in `project.yml`; `sign_and_build.sh` overrides it to `com.shobhit.fittrack` at build time). The app target uses `$(APP_BUNDLE_ID)`, the widget extension `$(APP_BUNDLE_ID).Widgets`. **Do not hardcode bundle IDs in project.yml or pass a plain `PRODUCT_BUNDLE_IDENTIFIER=` override** — it would collide across the two targets.
+- Home-screen widgets live in `ios/FitTrackWidgets/` (target `FitTrackWidgets`, an `app-extension` wired into `project.yml` and embedded into the app via the app target's `- target: FitTrackWidgets` dependency). One `WidgetBundle` with the Meal + Workout widgets. They render from a `WidgetSnapshot` the app writes to App Group `group.com.shobhit.fittrack` (see `ios/FitTrack/Shared/WidgetShared.swift`, compiled into both targets) and deep-link back via the `fittrack://` URL scheme (`fittrack://log/meal?type=…`, `fittrack://log/workout`), handled in `MainTabView.onOpenURL`. Both targets carry the App Group entitlement; the App Group + App Groups capability on **both** App IDs (`com.shobhit.fittrack` and `.Widgets`) must be configured in the Developer portal (App Group assignment is portal-only — the App Store Connect API has no App Groups endpoint).
+- **Release signing is manual, not automatic.** `project.yml` sets `CODE_SIGN_STYLE: Manual` for the **Release** config on both targets, pointing at the profiles "FitTrack App Store" and "FitTrack Widgets App Store". Headless auto-signing (`-allowProvisioningUpdates` + API key) *cannot* create a profile for the widget's bundle ID, so we pre-create both via `python3 ios/create_profiles.py` and reference them by name in `project.yml` + `ExportOptions.plist`. Debug/simulator builds are unaffected (unsigned / `CODE_SIGNING_ALLOWED=NO`). Xcode GUI shows a signing warning — expected and harmless; the release path never uses GUI signing.
 - dSYM upload warnings for Firebase prebuilt frameworks (grpc, absl, etc.) are harmless — those frameworks don't ship debug symbols.
 - `ITSAppUsesNonExemptEncryption: false` is set in `project.yml` — bypasses the App Store encryption compliance dialog.
 - App icon lives at `ios/FitTrack/Assets.xcassets/AppIcon.appiconset/` — currently a placeholder blue icon; replace with real artwork before public release.

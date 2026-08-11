@@ -107,6 +107,21 @@ final class FunctionsClient {
         try await call("estimateText", ["description": description], as: FoodAnalysisResult.self).items
     }
 
+    // MARK: Meal-logging chat (multimodal: photos + barcode context + free text)
+    struct MealChatResponse: Decodable {
+        let reply: String
+        let needsFollowUp: Bool
+        let items: [AnalyzedFoodItem]
+    }
+
+    /// One conversational turn. The full transcript + every attached image is
+    /// relayed each call (the backend is stateless). Returns the assistant's reply
+    /// and — when it's confident — the grounded food items ready to review & log.
+    /// `images` are `["base64": …, "mimeType": "image/jpeg"]` dicts.
+    func mealChat(messages: [[String: String]], images: [[String: String]]) async throws -> MealChatResponse {
+        try await call("mealChat", ["messages": messages, "images": images], as: MealChatResponse.self)
+    }
+
     struct LabelResult: Decodable {
         struct Macro: Decodable {
             let calories: Int?; let proteinG: Double?; let carbsG: Double?; let fatG: Double?; let fiberG: Double?
@@ -142,6 +157,36 @@ final class FunctionsClient {
     }
     func foodBarcode(_ code: String) async throws -> CachedProduct? {
         try await call("foodBarcode", ["barcode": code], as: BarcodeResult.self).product
+    }
+
+    // MARK: Telegram
+    /// A freshly minted link code plus the deep link that hands it to the bot.
+    /// `deepLink` is nil when TELEGRAM_BOT_USERNAME isn't configured on the
+    /// backend — the code still works, the user just types it manually.
+    struct TelegramLinkCode: Decodable {
+        let code: String
+        let expiresAt: Date
+        let botUsername: String?
+        let deepLink: String?
+
+        var deepLinkURL: URL? { deepLink.flatMap(URL.init(string:)) }
+    }
+
+    /// Start connecting this account to Telegram. The device timezone rides
+    /// along: the bot has no device to read one from, and every "today" it
+    /// computes depends on it.
+    func createTelegramLinkCode() async throws -> TelegramLinkCode {
+        try await call(
+            "createTelegramLinkCode",
+            ["timeZone": TimeZone.current.identifier],
+            as: TelegramLinkCode.self
+        )
+    }
+
+    struct UnlinkResult: Decodable { let unlinked: Bool }
+    @discardableResult
+    func unlinkTelegram() async throws -> Bool {
+        try await call("unlinkTelegram", [:], as: UnlinkResult.self).unlinked
     }
 
     struct ExerciseSearchResult: Decodable { let results: [Exercise] }

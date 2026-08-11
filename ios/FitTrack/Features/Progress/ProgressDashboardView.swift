@@ -16,6 +16,7 @@ struct ProgressDashboardView: View {
     @State private var plan: WorkoutPlan?
     @State private var range: ChartRange = .month
     @State private var selectedLift: String?
+    @State private var showWeightLog = false
 
     var body: some View {
         NavigationStack {
@@ -37,6 +38,18 @@ struct ProgressDashboardView: View {
             }
             .background(ScreenBackground())
             .navigationTitle("Progress")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        Haptics.tap()
+                        showWeightLog = true
+                    } label: {
+                        Label("Log weight", systemImage: "scalemass.fill")
+                    }
+                    .accessibilityLabel("Log today's weight")
+                }
+            }
+            .sheet(isPresented: $showWeightLog) { WeightLogSheet() }
             .task {
                 do { for try await w in repo.weightStream() { weights = w } } catch {}
             }

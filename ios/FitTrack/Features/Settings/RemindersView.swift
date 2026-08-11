@@ -14,11 +14,20 @@ struct RemindersView: View {
     @State private var showEditor = false
     @State private var error: String?
 
+    // Weekly weigh-in reminder (stored on the profile doc, not the reminders
+    // collection). Hydrated once from the profile stream; edits save immediately.
+    @State private var weighInEnabled = WeightReminderPrefs.default.enabled
+    @State private var weighInWeekday = WeightReminderPrefs.default.weekday
+    @State private var weighInTime = WeightReminderPrefs.default.time
+    @State private var weighInHydrated = false
+
     var body: some View {
         Form {
             if notifications.isDenied {
                 permissionSection
             }
+
+            weighInSection
 
             if !loaded {
                 Section { ProgressView().frame(maxWidth: .infinity) }
@@ -73,9 +82,61 @@ struct RemindersView: View {
                 self.error = error.localizedDescription
             }
         }
+        // Seed the weigh-in controls from the profile once; later emissions
+        // shouldn't stomp an in-progress local edit.
+        .task {
+            do {
+                for try await streamed in repo.profileStream() {
+                    guard !weighInHydrated, let prefs = streamed?.weightReminder else { continue }
+                    weighInEnabled = prefs.enabled
+                    weighInWeekday = prefs.weekday
+                    weighInTime = prefs.time
+                    weighInHydrated = true
+                }
+            } catch {}
+        }
     }
 
     // MARK: Sections
+
+    private var weighInSection: some View {
+        Section {
+            Toggle("Weekly weigh-in reminder", isOn: $weighInEnabled.animation(.snappy))
+                .tint(Theme.accentTeal)
+                .onChange(of: weighInEnabled) { _, _ in saveWeighIn() }
+            if weighInEnabled {
+                Picker("Day", selection: $weighInWeekday) {
+                    ForEach(0..<7, id: \.self) { day in
+                        Text(Calendar.current.weekdaySymbols[day]).tag(day)
+                    }
+                }
+                .onChange(of: weighInWeekday) { _, _ in saveWeighIn() }
+                DatePicker("Time", selection: weighInTimeBinding, displayedComponents: .hourAndMinute)
+            }
+        } header: {
+            Text("Weight")
+        } footer: {
+            Text("We'll remind you to log your weight once a week, and keep nudging you daily until you do. You'll also see a prompt when you open the app.")
+        }
+    }
+
+    /// Bridges the stored `ReminderTime` to the `Date` a `DatePicker` wants, and
+    /// saves on each change (keeping only hour/minute).
+    private var weighInTimeBinding: Binding<Date> {
+        Binding(
+            get: {
+                var comps = DateComponents()
+                comps.hour = weighInTime.hour
+                comps.minute = weighInTime.minute
+                return Calendar.current.date(from: comps) ?? Date()
+            },
+            set: { newDate in
+                let c = Calendar.current.dateComponents([.hour, .minute], from: newDate)
+                weighInTime = ReminderTime(hour: c.hour ?? 0, minute: c.minute ?? 0)
+                saveWeighIn()
+            }
+        )
+    }
 
     private var permissionSection: some View {
         Section {
@@ -151,6 +212,30 @@ struct RemindersView: View {
     }
 
     // MARK: Actions
+
+    /// Persist the weigh-in settings and reschedule its notifications. Skipped
+    /// until the controls have hydrated so seeding the state doesn't write back.
+    private func saveWeighIn() {
+        guard weighInHydrated else { return }
+        Haptics.selection()
+        let prefs = WeightReminderPrefs(
+            enabled: weighInEnabled,
+            weekday: weighInWeekday,
+            hour: weighInTime.hour,
+            minute: weighInTime.minute
+        )
+        Task {
+            if weighInEnabled { await ensurePermission() }
+            do {
+                try await repo.updateWeightReminder(prefs)
+                let last = (try? await repo.mostRecentWeightDate()) ?? nil
+                await notifications.syncWeightReminder(
+                    prefs: prefs, loggedThisCycle: prefs.loggedThisCycle(lastLogged: last))
+            } catch {
+                self.error = error.localizedDescription
+            }
+        }
+    }
 
     private func beginAdd() {
         editing = nil

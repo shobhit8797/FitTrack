@@ -32,6 +32,12 @@ struct SettingsView: View {
         }
     }
 
+    /// One-line recap for the Telegram row.
+    private var telegramSummary: String {
+        guard let link = profile?.telegram else { return "Not connected" }
+        return "Connected · \(link.displayHandle)"
+    }
+
     /// The name shown on the account card. Prefer the freshly-streamed profile
     /// name (updates the instant an edit is saved) over the cached auth name.
     private var accountName: String {
@@ -112,7 +118,29 @@ struct SettingsView: View {
                 } header: {
                     Text("Reminders")
                 } footer: {
-                    Text("Get notified to take your supplements and medications. Add what you take and the times that suit you.")
+                    Text("Set your weekly weigh-in reminder, and get notified to take your supplements and medications at the times that suit you.")
+                }
+
+                Section {
+                    NavigationLink {
+                        TelegramSettingsView()
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Telegram")
+                                Text(telegramSummary)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "paperplane.fill")
+                                .foregroundStyle(Theme.accentTeal)
+                        }
+                    }
+                } header: {
+                    Text("Logging")
+                } footer: {
+                    Text("Log meals by messaging a bot — in words or with a photo — and check today's numbers and workout without opening the app.")
                 }
 
                 Section("Apple Health") {

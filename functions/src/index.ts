@@ -6,7 +6,7 @@ setGlobalOptions({ region: 'us-central1', maxInstances: 20 });
 
 // AI food service (spec §10–11) — meal photo / label / text estimation (Gemini).
 // Plan generation moved to the Lyzr agents (see users/* below).
-export { analyzeMeal, parseLabel, estimateText } from './ai/handlers';
+export { analyzeMeal, parseLabel, estimateText, mealChat } from './ai/handlers';
 
 // Diet coach chat + 7-day plan generation (Gemini/OpenRouter). A conversational
 // surface where the user describes what they want, then generates a weekly plan
@@ -29,6 +29,12 @@ export { foodBarcode, foodSearch } from './food/handlers';
 
 // Exercise catalog (spec §7.2 / §12)
 export { searchExercises, getExercise, createCustomExercise } from './exercises/handlers';
+
+// Telegram bot — a second front-end onto the same Firestore data. The webhook
+// is the bot's only public surface; the two callables are the app's side of
+// account linking (see functions/src/telegram/README-ish comments).
+export { telegramWebhook } from './telegram/webhook';
+export { createTelegramLinkCode, unlinkTelegram } from './telegram/handlers';
 
 // Account deletion (spec §13: delete account + all data)
 export { deleteAccount } from './users/deletion';

@@ -96,6 +96,14 @@ export interface FoodAnalysisResult {
   items: FoodItem[];
 }
 
+/** One turn of the multimodal meal-logging chat: the assistant's reply plus
+ * either a clarifying question (needsFollowUp) or the finalized items to log. */
+export interface MealChatResult {
+  reply: string;
+  needsFollowUp: boolean;
+  items: FoodItem[];
+}
+
 export interface MacroSet {
   calories: number | null;
   proteinG: number | null;
@@ -282,6 +290,20 @@ export function validateFoodAnalysis(v: unknown): FoodAnalysisResult {
         confidence: Math.max(0, Math.min(1, num(x.confidence, 0.5))),
       };
     }),
+  };
+}
+
+export function validateMealChat(v: unknown): MealChatResult {
+  const o = isObj(v) ? v : {};
+  // Reuse the food-item validator so chat items match photo/text estimates.
+  const items = validateFoodAnalysis(o).items;
+  // If the model returned items, treat it as done regardless of a stray flag —
+  // and never claim it's ready to log with nothing to show.
+  const needsFollowUp = items.length > 0 ? false : o.needsFollowUp !== false;
+  return {
+    reply: str(o.reply, needsFollowUp ? 'Could you tell me a bit more about that meal?' : 'Here’s what I’ve got.'),
+    needsFollowUp,
+    items,
   };
 }
 

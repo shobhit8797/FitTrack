@@ -11,37 +11,34 @@ struct LogHubView: View {
     // Optional: the hub also renders in previews without an AppState around.
     @Environment(AppState.self) private var appState: AppState?
     @Environment(\.dismiss) private var dismiss
-    @State private var route: LogRoute?
     // Workout logging: stream the plan so we can offer its days, then log a
     // session against the chosen day.
     @State private var plan: WorkoutPlan?
     @State private var workoutDay: WorkoutDay?
     @State private var showWorkoutPicker = false
-
-    private let columns = [GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                           GridItem(.flexible(), spacing: Theme.Spacing.sm)]
+    @State private var showMealChat = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.m) {
-                    gridHeader("Food")
-                    LazyVGrid(columns: columns, spacing: Theme.Spacing.sm) {
-                        tile("camera.fill", "Photo", "AI estimates macros", color: Theme.accentTeal) { route = .photo }
-                        tile("barcode.viewfinder", "Barcode", "Scan a product", color: .indigo) { route = .barcode }
-                        tile("text.viewfinder", "Label", "Read a nutrition label", color: .orange) { route = .label }
-                        tile("keyboard", "Describe", "Type what you ate", color: .pink) { route = .text }
-                    }
+                    // Two primary paths — the ➕ forks into logging a meal or a
+                    // workout. Meal logging is a multimodal chat (photos + barcode
+                    // + text → Gemini); workout logs a session against the plan.
+                    primaryTile(
+                        "fork.knife", "Meal",
+                        "Chat it through — snap photos, scan a barcode, or just describe it",
+                        color: Theme.accentTeal
+                    ) { showMealChat = true }
 
-                    gridHeader("Activity & body")
-                    LazyVGrid(columns: columns, spacing: Theme.Spacing.sm) {
-                        tile("dumbbell.fill", "Workout", "Record your sets", color: .purple) { startWorkoutLog() }
-                        tile("scalemass.fill", "Weight", "Log today's weight", color: .green) { route = .weight }
-                    }
+                    primaryTile(
+                        "dumbbell.fill", "Workout",
+                        "Record your sets against today's session",
+                        color: .purple
+                    ) { startWorkoutLog() }
                 }
                 .padding(Theme.Spacing.m)
             }
-            .background(ScreenBackground())
             .navigationTitle("Log")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -59,15 +56,7 @@ struct LogHubView: View {
             .task {
                 do { for try await p in repo.planStream() { plan = p } } catch {}
             }
-            .sheet(item: $route) { route in
-                switch route {
-                case .text:    MealTextEntrySheet()
-                case .weight:  WeightLogSheet()
-                case .photo:   MealPhotoEntrySheet()
-                case .barcode: BarcodeEntrySheet()
-                case .label:   LabelEntrySheet()
-                }
-            }
+            .fullScreenCover(isPresented: $showMealChat) { MealChatView() }
             .fullScreenCover(item: $workoutDay) { day in WorkoutSessionView(day: day) }
             .confirmationDialog("Which session?", isPresented: $showWorkoutPicker, titleVisibility: .visible) {
                 if let plan {
@@ -83,6 +72,9 @@ struct LogHubView: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        // Drop the modal's own backdrop so the cards read as floating in air,
+        // lifted only by their shadow, over whatever's behind the sheet.
+        .presentationBackground(.clear)
         // A widget-preselected meal type only applies to this hub session.
         .onDisappear { appState?.pendingMealType = nil }
     }
@@ -99,40 +91,35 @@ struct LogHubView: View {
         }
     }
 
-    private func gridHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, Theme.Spacing.xs)
-            .accessibilityAddTraits(.isHeader)
-    }
-
-    private func tile(_ icon: String, _ title: String, _ subtitle: String,
-                      color: Color, action: @escaping () -> Void) -> some View {
+    /// A full-width primary path (meal / workout): larger badge, title + subtitle
+    /// on a filled row. Reads as the headline choice above the quick-add grid.
+    private func primaryTile(_ icon: String, _ title: String, _ subtitle: String,
+                             color: Color, action: @escaping () -> Void) -> some View {
         Button {
             Haptics.tap()
             action()
         } label: {
-            VStack(alignment: .leading, spacing: Theme.Spacing.s) {
-                IconBadge(systemImage: icon, color: color, size: 38)
-                VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: Theme.Spacing.m) {
+                IconBadge(systemImage: icon, color: color, size: 48)
+                VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.headline)
                         .foregroundStyle(.primary)
                     Text(subtitle)
-                        .font(.caption2)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
             }
-            .padding(Theme.Spacing.sm)
+            .padding(Theme.Spacing.m)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
-            )
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            // Soft drop shadow so the card appears to float above the backdrop.
+            .shadow(color: .black.opacity(0.18), radius: 18, y: 10)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -144,7 +131,7 @@ struct LogHubView: View {
 }
 
 enum LogRoute: Identifiable {
-    case photo, barcode, label, text, weight
+    case photo, barcode, label, text
     var id: Int { hashValue }
 }
 

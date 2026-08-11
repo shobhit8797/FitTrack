@@ -23,4 +23,8 @@ ios/**/*.xcuserstate
 ios/.build/
 ios/DerivedData/
 ios/build/
+
+# Python venv for the App Store Connect scripts (PyJWT + cryptography).
+# Recreate with: cd ios && uv venv .venv && uv pip install --python .venv/bin/python PyJWT cryptography
+ios/.venv/
 .DS_Store

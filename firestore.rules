@@ -22,18 +22,21 @@ service cloud.firestore {
       // plan generation). Clients may patch a small allowlist of profile
       // fields directly during onboarding edits; everything else is locked.
       allow create: if isOwner(uid);
+      // `telegram` is the chat binding — it authorizes a Telegram chat to write
+      // into this account, so only the linking Cloud Functions may set it.
       allow update: if isOwner(uid)
         && !request.resource.data.diff(resource.data).affectedKeys()
-            .hasAny(['calorieTarget','proteinTargetG','carbTargetG','fatTargetG','targetsComputedAt']);
+            .hasAny(['calorieTarget','proteinTargetG','carbTargetG','fatTargetG','targetsComputedAt','telegram']);
       allow delete: if false; // account deletion goes through a Cloud Function
 
       // Sub-collections: weightEntries, dayLogs, meals, workoutSessions,
-      // workoutPlans, customExercises — all owner-scoped.
+      // reminders, workoutPlans, customExercises — all owner-scoped.
       match /weightEntries/{id}   { allow read, write: if isOwner(uid); }
       match /dayLogs/{date}       { allow read, write: if isOwner(uid);
         match /meals/{mealId}     { allow read, write: if isOwner(uid); }
       }
       match /workoutSessions/{id} { allow read, write: if isOwner(uid); }
+      match /reminders/{id}       { allow read, write: if isOwner(uid); }
       match /workoutPlans/{id}    {
         // Plans are generated server-side; client reads only.
         allow read: if isOwner(uid);
@@ -62,6 +65,16 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if false;
     }
+
+    // ---- Telegram bot state (server-only) ----
+    // telegramLinks/{code}   — short-lived link codes
+    // telegramChats/{chatId} — the chat → uid binding the bot authorizes on
+    // telegramUpdates/{id}   — webhook dedupe records
+    // Written and read exclusively by Cloud Functions. Spelled out rather than
+    // left to the catch-all below because a readable binding would leak uids.
+    match /telegramLinks/{code}   { allow read, write: if false; }
+    match /telegramChats/{chatId} { allow read, write: if false; }
+    match /telegramUpdates/{id}   { allow read, write: if false; }
 
     // Deny everything not explicitly matched above.
     match /{document=**} {

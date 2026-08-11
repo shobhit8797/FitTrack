@@ -41,7 +41,11 @@ cd ios && bash sign_and_build.sh
 ```bash
 bash ios/check_status.sh
 ```
-(Wraps `ios/asc_builds.py`. Requires `python3 -m pip install --user PyJWT cryptography` once per machine.)
+(Wraps `ios/asc_builds.py`.) The App Store Connect scripts need **PyJWT + cryptography**. They resolve their interpreter through `ios/python_env.sh`, which prefers `ios/.venv` and only falls back to `python3` on PATH. Create the venv once per machine:
+```bash
+cd ios && uv venv .venv && uv pip install --python .venv/bin/python PyJWT cryptography
+```
+Do **not** rely on a bare `python3` — installing any Homebrew formula that depends on `python@3.x` moves `python3` to a fresh interpreter with no packages, which hard-fails `check_status.sh` and silently degrades the build-number auto-bump to a local increment.
 
 ### Key credentials (all stored locally)
 | What | Where |
@@ -50,7 +54,7 @@ bash ios/check_status.sh
 | Backup of certs + profile | `~/Desktop/FitTrack_Certs/` (also in `~/Downloads/FitTrack_Certs/` on the lappy Mac) |
 | Firebase functions env (agent IDs) | `functions/.env` (gitignored — copy between machines manually) |
 | Apple Distribution cert | Keychain: `Apple Distribution: subrahmanya s hegde (7MFYAGK3VV)` |
-| Release provisioning profiles | Two App Store profiles the release archive signs with manually: **"FitTrack App Store"** (`com.shobhit.fittrack`) + **"FitTrack Widgets App Store"** (`com.shobhit.fittrack.Widgets`), both in `~/Library/MobileDevice/Provisioning Profiles/`. Regenerate/install with `python3 ios/create_profiles.py`. |
+| Release provisioning profiles | Two App Store profiles the release archive signs with manually: **"FitTrack App Store"** (`com.shobhit.fittrack`) + **"FitTrack Widgets App Store"** (`com.shobhit.fittrack.Widgets`), both in `~/Library/MobileDevice/Provisioning Profiles/`. Regenerate/install with `ios/.venv/bin/python ios/create_profiles.py`. |
 
 ### App Store Connect details
 | Field | Value |
@@ -68,9 +72,23 @@ cd functions
 npm run deploy        # = tsc build + firebase deploy --only functions
 ```
 - Runtime is **Node 22** (`firebase.json` + `functions/package.json` engines).
-- Needs `functions/.env` with: `PROVIDER`, `MODEL_GEMINI`, `MODEL_OPENROUTER`, `LYZR_WORKOUT_AGENT_ID`, `LYZR_DIET_AGENT_ID`, `LYZR_BASE_URL` (gitignored — copy between machines). Deploy fails non-interactively without it.
+- Needs `functions/.env` with: `PROVIDER`, `MODEL_GEMINI`, `MODEL_OPENROUTER`, `LYZR_WORKOUT_AGENT_ID`, `LYZR_DIET_AGENT_ID`, `LYZR_BASE_URL`, `TELEGRAM_BOT_USERNAME`, `DEFAULT_TIMEZONE` (gitignored — copy between machines). Deploy fails non-interactively without it.
 - Needs a logged-in Firebase CLI: `npx firebase-tools login` (interactive terminal only). Project: `fittrack-dev-3a3c5`.
 - After changing agent prompts/schemas, users must **Regenerate** their plan (Settings → Plans in the app) to see the new output — existing Firestore plans are not migrated.
+
+## Telegram bot
+A second front-end onto the same Firestore data (`functions/src/telegram/`). Users log meals by text or photo, check `/today`, and see `/workout` without opening the app. Full setup + architecture: **`docs/TELEGRAM.md`**.
+
+```bash
+# after changing commands, or on first setup — registers the webhook + command menu
+cd functions
+TELEGRAM_BOT_TOKEN='…' TELEGRAM_WEBHOOK_SECRET='…' \
+WEBHOOK_URL='https://us-central1-fittrack-dev-3a3c5.cloudfunctions.net/telegramWebhook' \
+node scripts/setup-telegram.mjs
+```
+- Secrets live in Secret Manager: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` (set with `firebase functions:secrets:set`).
+- Meal estimation is shared with the app's callables via `functions/src/ai/foodEstimate.ts` — change it there, both surfaces follow.
+- The bot buckets days by the `timeZone` field on `users/{uid}`, written when the user connects from **Settings → Telegram**.
 
 ## One-time machine setup (to build & publish from a new Mac)
 1. Install Xcode + `brew install xcodegen`; run `xcodegen generate` in `ios/`.
@@ -81,14 +99,14 @@ npm run deploy        # = tsc build + firebase deploy --only functions
    - `FitTrack_Certs/` backup folder (p12 + provisioning profile)
 3. Import the signing cert: `security import AppleDistribution_7MFYAGK3VV.p12 -k ~/Library/Keychains/login.keychain-db -T /usr/bin/codesign` (prompts for the p12 password).
 4. If `security find-identity -v -p codesigning` shows **0 valid identities**, the Apple WWDR G3 intermediate is missing: download `https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer` and `security import` it.
-5. `python3 -m pip install --user PyJWT cryptography` (for the build-number auto-bump, status script, and profile creation).
-6. Create + install the release provisioning profiles: `python3 ios/create_profiles.py` (needs the API key from step 2 and the App IDs/App Group registered in the portal). This replaces manually copying a `.mobileprovision`.
+5. `cd ios && uv venv .venv && uv pip install --python .venv/bin/python PyJWT cryptography` (for the build-number auto-bump, status script, and profile creation). The scripts find it via `ios/python_env.sh`.
+6. Create + install the release provisioning profiles: `ios/.venv/bin/python ios/create_profiles.py` (needs the API key from step 2 and the App IDs/App Group registered in the portal). This replaces manually copying a `.mobileprovision`.
 7. `npx firebase-tools login` for backend deploys.
 
 ## Important notes
 - Bundle IDs are driven by the `APP_BUNDLE_ID` build setting (defaults to `com.fittrack.FitTrack` in `project.yml`; `sign_and_build.sh` overrides it to `com.shobhit.fittrack` at build time). The app target uses `$(APP_BUNDLE_ID)`, the widget extension `$(APP_BUNDLE_ID).Widgets`. **Do not hardcode bundle IDs in project.yml or pass a plain `PRODUCT_BUNDLE_IDENTIFIER=` override** — it would collide across the two targets.
 - Home-screen widgets live in `ios/FitTrackWidgets/` (target `FitTrackWidgets`, an `app-extension` wired into `project.yml` and embedded into the app via the app target's `- target: FitTrackWidgets` dependency). One `WidgetBundle` with the Meal + Workout widgets. They render from a `WidgetSnapshot` the app writes to App Group `group.com.shobhit.fittrack` (see `ios/FitTrack/Shared/WidgetShared.swift`, compiled into both targets) and deep-link back via the `fittrack://` URL scheme (`fittrack://log/meal?type=…`, `fittrack://log/workout`), handled in `MainTabView.onOpenURL`. Both targets carry the App Group entitlement; the App Group + App Groups capability on **both** App IDs (`com.shobhit.fittrack` and `.Widgets`) must be configured in the Developer portal (App Group assignment is portal-only — the App Store Connect API has no App Groups endpoint).
-- **Release signing is manual, not automatic.** `project.yml` sets `CODE_SIGN_STYLE: Manual` for the **Release** config on both targets, pointing at the profiles "FitTrack App Store" and "FitTrack Widgets App Store". Headless auto-signing (`-allowProvisioningUpdates` + API key) *cannot* create a profile for the widget's bundle ID, so we pre-create both via `python3 ios/create_profiles.py` and reference them by name in `project.yml` + `ExportOptions.plist`. Debug/simulator builds are unaffected (unsigned / `CODE_SIGNING_ALLOWED=NO`). Xcode GUI shows a signing warning — expected and harmless; the release path never uses GUI signing.
+- **Release signing is manual, not automatic.** `project.yml` sets `CODE_SIGN_STYLE: Manual` for the **Release** config on both targets, pointing at the profiles "FitTrack App Store" and "FitTrack Widgets App Store". Headless auto-signing (`-allowProvisioningUpdates` + API key) *cannot* create a profile for the widget's bundle ID, so we pre-create both via `ios/.venv/bin/python ios/create_profiles.py` and reference them by name in `project.yml` + `ExportOptions.plist`. Debug/simulator builds are unaffected (unsigned / `CODE_SIGNING_ALLOWED=NO`). Xcode GUI shows a signing warning — expected and harmless; the release path never uses GUI signing.
 - dSYM upload warnings for Firebase prebuilt frameworks (grpc, absl, etc.) are harmless — those frameworks don't ship debug symbols.
 - `ITSAppUsesNonExemptEncryption: false` is set in `project.yml` — bypasses the App Store encryption compliance dialog.
 - App icon lives at `ios/FitTrack/Assets.xcassets/AppIcon.appiconset/` — currently a placeholder blue icon; replace with real artwork before public release.

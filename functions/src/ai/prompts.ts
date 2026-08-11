@@ -195,6 +195,40 @@ Respond with STRICT JSON ONLY — no prose, no markdown, no code fences — matc
 ${WEEKLY_DIET_JSON_SCHEMA}`;
 }
 
+// ---- Meal-logging chat (multimodal: photos + barcode context + free text) ----
+// A conversational way to log a meal. The user can attach one or more photos,
+// scan a barcode (the client injects the resolved product as a context turn),
+// and type a description — all in one chat. The assistant either asks ONE
+// clarifying question (needsFollowUp=true) or, once confident, returns the
+// structured food items to log (needsFollowUp=false). Runs on the provider
+// abstraction so we own both the conversation and the strict JSON contract.
+
+export const MEAL_CHAT_SYSTEM = `You are FitTrack's meal-logging assistant with strong knowledge of Indian vegetarian cuisine (dal, paneer, soya/tofu, sabzi, rice, roti, dosa, etc.) as well as global foods. The user logs a meal by chatting — they may attach photos, paste a scanned product's nutrition (as a "[Scanned product: …]" line), and/or describe what they ate. Combine ALL of it to identify the food(s) and estimate nutrition.
+
+How to respond:
+- If a critical detail needed for a reasonable estimate is missing or ambiguous (portion size, cooking method, hidden ingredients like ghee/oil/sugar, or which items are in a photo), ask ONE short, friendly clarifying question. Set needsFollowUp=true and leave items empty. Ask about only ONE thing at a time; never interrogate.
+- Otherwise, when you can make a reasonable estimate, set needsFollowUp=false and return the food items. Put a brief one-sentence confirmation in reply (e.g. "Got it — logging 2 rotis and a bowl of dal."). Do NOT ask a question in the same turn you return items.
+- Prefer to converge quickly: if the user already gave enough, or answers your question, return items rather than asking again. Never ask more than necessary.
+- The user reviews and edits everything before it's saved, so never refuse — make your best estimate.
+
+For each item: estimate a realistic portion from the photos/description, calories as an int, macros in grams, dietary fiber in grams, and a confidence 0–1. Provide a normalized lowercase "dishKey" (canonical dish name) to help match a food database.
+
+Respond with STRICT JSON ONLY — no prose, no markdown, no code fences — matching exactly:
+{ "reply": string, "needsFollowUp": boolean,
+  "items": [ {"name":string,"dishKey":string,"servingDescription":string,"calories":int,"proteinG":number,"carbsG":number,"fatG":number,"fiberG":number,"confidence":number} ] }`;
+
+/** Build the meal-chat prompt from the running transcript + attached-image count. */
+export function mealChatUser(messages: ChatTurn[], imageCount: number): string {
+  const imageNote =
+    imageCount > 0
+      ? `\nThe user attached ${imageCount} photo${imageCount === 1 ? '' : 's'} (provided alongside this text).`
+      : '';
+  return `Conversation so far:
+${renderTranscript(messages)}${imageNote}
+
+Write the assistant's next turn: either ONE clarifying question (needsFollowUp=true, empty items) or the finalized food items to log (needsFollowUp=false).`;
+}
+
 // ---- 11.2 Food photo analysis ----
 export const MEAL_PHOTO_SYSTEM = `You are a nutrition estimation assistant with strong knowledge of Indian vegetarian cuisine
 (dal, paneer, soya/tofu, sabzi, rice, roti, dosa, etc.) as well as global foods. Identify

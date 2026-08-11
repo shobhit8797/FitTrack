@@ -142,11 +142,56 @@ struct UserProfile: Codable, Equatable {
     var dietPlanStatus: String?
     var dietPlanError: String?
 
+    // Weekly weight-logging reminder (client-managed, written directly to this
+    // doc — Security Rules allow owner writes to non-target fields). Optional so
+    // profile docs that predate the feature still decode; nil ⇒ use the
+    // WeightReminderPrefs defaults (enabled, Monday, 9:00 AM). Weekday is
+    // 0=Sun..6=Sat, matching preferredWeekdays / SupplementReminder.weekdays.
+    var weightReminderEnabled: Bool? = nil
+    var weightReminderWeekday: Int? = nil
+    var weightReminderHour: Int? = nil
+    var weightReminderMinute: Int? = nil
+
+    // Telegram binding, written server-side when the user redeems a link code
+    // (Security Rules block the client from touching it — it's what authorizes a
+    // chat to write into this account). nil ⇒ not connected.
+    var telegram: TelegramLink? = nil
+
     var hasTargets: Bool { calorieTarget != nil }
+    var isTelegramLinked: Bool { telegram != nil }
+
+    /// Resolved weekly weigh-in reminder settings, applying defaults for any
+    /// field an older profile doc doesn't have.
+    var weightReminder: WeightReminderPrefs {
+        WeightReminderPrefs(
+            enabled: weightReminderEnabled ?? WeightReminderPrefs.default.enabled,
+            weekday: weightReminderWeekday ?? WeightReminderPrefs.default.weekday,
+            hour: weightReminderHour ?? WeightReminderPrefs.default.hour,
+            minute: weightReminderMinute ?? WeightReminderPrefs.default.minute
+        )
+    }
     var isWorkoutPlanGenerating: Bool { workoutPlanStatus == "generating" }
     var workoutPlanFailed: Bool { workoutPlanStatus == "failed" }
     var isDietPlanGenerating: Bool { dietPlanStatus == "generating" }
     var dietPlanFailed: Bool { dietPlanStatus == "failed" }
+}
+
+/// The connected Telegram chat, mirrored onto the profile so the app can show
+/// connection state. The bot's own record lives outside users/{uid}.
+struct TelegramLink: Codable, Equatable {
+    var chatId: Int
+    var username: String?
+    var linkedAt: Date?
+    /// The bot's public handle, stamped in at link time so the app can open the
+    /// chat later without asking the backend for it again.
+    var botUsername: String?
+
+    /// "@handle" when Telegram exposes one, otherwise a neutral label — a chat
+    /// with no public username is normal, not an error.
+    var displayHandle: String {
+        if let username, !username.isEmpty { return "@\(username)" }
+        return "Connected chat"
+    }
 }
 
 struct Targets: Codable, Equatable {
@@ -164,6 +209,50 @@ struct WeightEntry: Codable, Identifiable, Equatable {
     var weightKg: Double
     var source: String // manual | healthKit
     var note: String?
+}
+
+/// Resolved weekly weight-logging reminder settings (see UserProfile). Encodes
+/// the rule: remind the user to log weight once a week on `weekday` at
+/// `hour:minute`, and keep nudging daily until they've logged for the week.
+/// Weekday is 0=Sun..6=Sat. Notification scheduling lives in NotificationService;
+/// this type owns the small bit of "which cycle are we in" date math shared by
+/// the scheduler and the in-app check-in prompt.
+struct WeightReminderPrefs: Equatable {
+    var enabled: Bool
+    var weekday: Int // 0=Sun..6=Sat
+    var hour: Int
+    var minute: Int
+
+    static let `default` = WeightReminderPrefs(enabled: true, weekday: 1, hour: 9, minute: 0)
+
+    var time: ReminderTime { ReminderTime(hour: hour, minute: minute) }
+
+    /// Localized recap, e.g. "Mondays at 9:00 AM".
+    var summary: String {
+        let symbols = Calendar.current.weekdaySymbols // [Sunday, Monday, ...]
+        let day = symbols.indices.contains(weekday) ? symbols[weekday] : "Monday"
+        return "\(day)s at \(time.display)"
+    }
+
+    /// The most recent moment this reminder was due at or before `now` — the
+    /// start of the current weigh-in cycle. On the weigh-in day before the
+    /// reminder time, this is last week's occurrence.
+    func lastFireDate(now: Date = Date(), calendar: Calendar = .current) -> Date {
+        var comps = DateComponents()
+        comps.weekday = weekday + 1 // Calendar weekdays are 1=Sun..7=Sat
+        comps.hour = hour
+        comps.minute = minute
+        return calendar.nextDate(
+            after: now, matching: comps, matchingPolicy: .nextTime, direction: .backward
+        ) ?? now
+    }
+
+    /// True once a weight has been logged during the current cycle (at or after
+    /// the last time the reminder was due).
+    func loggedThisCycle(lastLogged: Date?, now: Date = Date(), calendar: Calendar = .current) -> Bool {
+        guard let lastLogged else { return false }
+        return lastLogged >= lastFireDate(now: now, calendar: calendar)
+    }
 }
 
 struct MealEntry: Codable, Identifiable, Equatable {

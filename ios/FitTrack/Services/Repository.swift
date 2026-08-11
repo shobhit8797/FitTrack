@@ -134,6 +134,29 @@ final class Repository {
         try ref.setData(from: e)
     }
 
+    /// Date of the newest weight entry, or nil if none. One-shot fetch (cheaper
+    /// than a listener) for the weekly-reminder "has the user logged this cycle?"
+    /// check on foreground and after saving reminder settings.
+    func mostRecentWeightDate() async throws -> Date? {
+        if Demo.isActive { return DemoData.weights.map(\.date).max() }
+        let snap = try await userDoc().collection("weightEntries")
+            .order(by: "date", descending: true).limit(to: 1).getDocuments()
+        return snap.documents.first.flatMap { try? $0.data(as: WeightEntry.self) }?.date
+    }
+
+    /// Persist the weekly weigh-in reminder settings onto the user profile doc.
+    /// Merges just these keys so it never touches targets or other profile fields
+    /// (Security Rules allow owner writes to everything except the target fields).
+    func updateWeightReminder(_ prefs: WeightReminderPrefs) async throws {
+        if Demo.isActive { return }
+        try await userDoc().setData([
+            "weightReminderEnabled": prefs.enabled,
+            "weightReminderWeekday": prefs.weekday,
+            "weightReminderHour": prefs.hour,
+            "weightReminderMinute": prefs.minute,
+        ], merge: true)
+    }
+
     func weightStream() -> AsyncThrowingStream<[WeightEntry], Error> {
         if Demo.isActive { return Demo.stream(DemoData.weights) }
         return AsyncThrowingStream { continuation in

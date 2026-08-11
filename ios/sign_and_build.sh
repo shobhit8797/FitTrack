@@ -46,8 +46,10 @@ security find-identity -v -p codesigning | grep "Apple Distribution.*7MFYAGK3VV"
 # Auto-bump the build number: next = max(latest on App Store Connect, local) + 1.
 # Falls back to local-only if the ASC query fails (offline / missing PyJWT).
 echo "==> Determining next build number..."
+# shellcheck source=/dev/null
+source "$PROJECT_DIR/python_env.sh"
 CURRENT=$(sed -n 's/^ *CURRENT_PROJECT_VERSION: "\([0-9]*\)"/\1/p' "$PROJECT_DIR/project.yml")
-LATEST=$(python3 "$PROJECT_DIR/asc_builds.py" 2>/dev/null || echo "")
+LATEST=$("$ASC_PYTHON" "$PROJECT_DIR/asc_builds.py" 2>/dev/null || echo "")
 if [[ "$LATEST" =~ ^[0-9]+$ ]] && [ "$LATEST" -ge "$CURRENT" ]; then
     NEXT=$((LATEST + 1))
 else

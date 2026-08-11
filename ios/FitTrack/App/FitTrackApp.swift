@@ -126,6 +126,9 @@ final class AppState {
     var pendingMealType: MealType?
     /// Set by fittrack://log/workout; consumed by WorkoutView once its plan loads.
     var pendingWorkoutLog = false
+    /// Drives the weekly weigh-in prompt (WeightCheckInSheet); raised by
+    /// MainTabView when a weigh-in is due and unlogged for the current cycle.
+    var showWeightCheckIn = false
 }
 
 struct MainTabView: View {
@@ -133,8 +136,17 @@ struct MainTabView: View {
     // a tab — it's reached from the Today toolbar, keeping the bar focused on
     // the things people do daily. Tapping ➕ opens the Log hub as a sheet rather
     // than switching tabs, so we restore the prior tab and flip a sheet flag.
+    @Environment(Repository.self) private var repo
+    @Environment(NotificationService.self) private var notifications
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selection = 0
     @State private var appState = AppState()
+    // Latest values backing the weekly weigh-in decision. Kept fresh by the two
+    // streams below; re-evaluated on foreground since time (the current cycle)
+    // moves on its own.
+    @State private var profile: UserProfile?
+    @State private var latestWeightDate: Date?
+    @State private var weightLoaded = false
 
     var body: some View {
         @Bindable var appState = appState
@@ -163,9 +175,52 @@ struct MainTabView: View {
             appState.showLog = true
         }
         .sheet(isPresented: $appState.showLog) { LogHubView() }
+        .sheet(isPresented: $appState.showWeightCheckIn) { WeightCheckInSheet() }
         .onOpenURL { handleWidgetLink($0) }
         // Outside the .sheet so the Log hub (sheet content) sees AppState too.
         .environment(appState)
+        // Keep the weekly weigh-in reminder + prompt in step with the profile
+        // settings and the user's logging. Two independent streams feed the
+        // decision; the guard in evaluate() waits until both have a value.
+        .task {
+            do {
+                for try await streamed in repo.profileStream() {
+                    profile = streamed
+                    await evaluateWeighIn()
+                }
+            } catch {}
+        }
+        .task {
+            do {
+                for try await entries in repo.weightStream() {
+                    latestWeightDate = entries.map(\.date).max()
+                    weightLoaded = true
+                    await evaluateWeighIn()
+                }
+            } catch {}
+        }
+        // Time advances even when the app sits idle, so re-check on foreground:
+        // a new cycle may have started (weigh-in day arrived) since last active.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await evaluateWeighIn() }
+        }
+    }
+
+    /// Reschedule the weight-reminder notifications from current state and, when
+    /// a weigh-in is due but unlogged this cycle, raise the in-app prompt (at
+    /// most once per day, and never on top of another sheet).
+    private func evaluateWeighIn() async {
+        guard let profile, weightLoaded else { return }
+        let prefs = profile.weightReminder
+        let logged = prefs.loggedThisCycle(lastLogged: latestWeightDate)
+        await notifications.syncWeightReminder(prefs: prefs, loggedThisCycle: logged)
+
+        guard prefs.enabled, !logged else { return }
+        guard !appState.showLog, !appState.showWeightCheckIn else { return }
+        guard !WeightCheckIn.promptedToday() else { return }
+        WeightCheckIn.markPromptedToday()
+        appState.showWeightCheckIn = true
     }
 
     /// Widget deep links (see WidgetDeepLink in Shared/WidgetShared.swift).

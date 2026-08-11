@@ -2,6 +2,7 @@ import { getAuth } from 'firebase-admin/auth';
 import { onCall } from 'firebase-functions/v2/https';
 import { db, storage } from '../lib/admin';
 import { requireUid, toHttpsError } from '../lib/callable';
+import { unlinkUser } from '../telegram/linking';
 
 /**
  * POST /users/delete-account (spec §13: delete account + all data).
@@ -11,6 +12,11 @@ import { requireUid, toHttpsError } from '../lib/callable';
 export const deleteAccount = onCall({ timeoutSeconds: 300 }, async (req) => {
   const uid = requireUid(req);
   try {
+    // Telegram binding first: it lives outside users/{uid} (telegramChats/{chatId}),
+    // so recursiveDelete below would leave a chat still authorized to write into
+    // a uid that no longer exists.
+    await unlinkUser(uid).catch(() => undefined);
+
     // Firestore: recursiveDelete handles the user doc + all subcollections.
     await db.recursiveDelete(db.doc(`users/${uid}`));
 

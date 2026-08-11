@@ -22,6 +22,10 @@ final class NotificationService {
     /// our own reminders and never any future notification the app might add.
     private static let idPrefix = "rem_"
 
+    /// Separate namespace for the weekly weight-logging reminder so its re-sync
+    /// never disturbs supplement/medication reminders.
+    private static let weightIdPrefix = "weightrem_"
+
     private let center = UNUserNotificationCenter.current()
 
     var isAuthorized: Bool {
@@ -105,6 +109,46 @@ final class NotificationService {
             }
         }
         return requests
+    }
+
+    /// Schedule the weekly weight-logging reminder. The weigh-in-day alert is
+    /// always kept (repeats weekly); while the user hasn't logged a weight for
+    /// the current cycle, daily follow-ups are added on the other six days so
+    /// they're nudged every day until they log — then those follow-ups drop and
+    /// only the weekly alert remains. Local-only, so callers re-invoke this on
+    /// launch, on foreground, and whenever weight or settings change.
+    func syncWeightReminder(prefs: WeightReminderPrefs, loggedThisCycle: Bool) async {
+        // Clear only our own weight-reminder requests.
+        let pending = await center.pendingNotificationRequests()
+        let ours = pending.map(\.identifier).filter { $0.hasPrefix(Self.weightIdPrefix) }
+        center.removePendingNotificationRequests(withIdentifiers: ours)
+
+        guard prefs.enabled else { return }
+        await refreshAuthorizationStatus()
+        guard isAuthorized else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "Time for your weekly weigh-in"
+        content.body = "Log your weight to keep your progress on track."
+        content.sound = .default
+        content.userInfo = ["weightReminder": true]
+
+        func request(weekday: Int, id: String) -> UNNotificationRequest {
+            var comps = DateComponents()
+            comps.weekday = weekday + 1 // model 0=Sun..6=Sat → Calendar 1..7
+            comps.hour = prefs.hour
+            comps.minute = prefs.minute
+            let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: true)
+            return UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+        }
+
+        var requests = [request(weekday: prefs.weekday, id: "\(Self.weightIdPrefix)weekly")]
+        if !loggedThisCycle {
+            for day in 0...6 where day != prefs.weekday {
+                requests.append(request(weekday: day, id: "\(Self.weightIdPrefix)nag_\(day)"))
+            }
+        }
+        for request in requests { try? await center.add(request) }
     }
 }
 

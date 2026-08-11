@@ -17,6 +17,7 @@
 		27B29252DE28C78DD47A09B1 /* CalorieRing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75431485239C1244321E6E89 /* CalorieRing.swift */; };
 		31EE6A6B6FD52172A721C742 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = D11802B26CC304A6683FD9C2 /* GoogleSignIn */; };
 		33EBC457E3B1E9646D67BE26 /* FunctionsClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17C445757687460D3D720600 /* FunctionsClient.swift */; };
+		3B950D6844210990538B117F /* TelegramSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E66C8739A3182616603A288 /* TelegramSettingsView.swift */; };
 		3BF423D0EB8317F42BCC5E85 /* WorkoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA9383D98285FDE5A505EFF3 /* WorkoutView.swift */; };
 		3E56AB4D486C5532A9ED767D /* RemindersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E125725F2663FA3B106157B2 /* RemindersView.swift */; };
 		40C582F661EE04244B63B0D2 /* WidgetShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 671A61A890442A591B48F08D /* WidgetShared.swift */; };
@@ -43,6 +44,7 @@
 		9808DC75C56C3DB214CB8965 /* WorkoutWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95DF98AB0EE0784113C72171 /* WorkoutWidget.swift */; };
 		A0D67A6C5AD19AC08AD01012 /* GymIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 623183D3D6E3D5D1A5CB54D0 /* GymIntents.swift */; };
 		A0D7A41F077FC6C72967445B /* OnboardingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 682A6BB911DFEFA03A71395D /* OnboardingFlow.swift */; };
+		A7377A76A9A4D5617EA0209F /* WeightCheckInSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3F2E2FC6293A25CF35C6A03 /* WeightCheckInSheet.swift */; };
 		B1ECB0367A81767B919A7FA2 /* ImageCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70A3B0BA0F18A36A78A9BDCF /* ImageCapture.swift */; };
 		BAF2E6C04A28239FA47C916B /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 9694463A051FA3AE578C11DF /* FirebaseAuth */; };
 		BCE5AE99E79C536EA9C919F1 /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7053694C1137E10528520BB1 /* SignInView.swift */; };
@@ -51,6 +53,7 @@
 		CEC6B2A2BFC4004002B33864 /* FitTrackApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3BB4049591E8BE2A35F0775 /* FitTrackApp.swift */; };
 		CF8E2AABA3281C8B85F90D6B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 202BD2FD19604EA1CB6F64F7 /* SettingsView.swift */; };
 		D38AEF5A4E78C4DD2B59B020 /* DietChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA35DFD75E2EF8C1891B41CE /* DietChatView.swift */; };
+		DAFB0A9B0E67300262230CFB /* MealChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3144CDF5B7395D100F196907 /* MealChatView.swift */; };
 		E2B6BBCCF4A8029AC228BAD4 /* FitTrackWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4B3F51240B6A73CAE26A33B0 /* FitTrackWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		F59F61EBB1096E05BAAC9148 /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = CD2A232875CC1A6763C238F0 /* FirebaseFunctions */; };
 		F931EEBCDD1818410842667E /* LabelOCR.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D78FD43E39DA405A40CDA59 /* LabelOCR.swift */; };
@@ -99,6 +102,7 @@
 		2391498B803382A851145E4D /* BarcodeScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarcodeScannerView.swift; sourceTree = "<group>"; };
 		2E1AE5D0E0FDA72E8071046C /* FitTrackWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FitTrackWidgetsBundle.swift; sourceTree = "<group>"; };
 		2E3D96BC9C62C96E4CE4ADA9 /* Domain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Domain.swift; sourceTree = "<group>"; };
+		3144CDF5B7395D100F196907 /* MealChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MealChatView.swift; sourceTree = "<group>"; };
 		31BA44D8C204368DEE54486A /* FunctionsClient+Exercise.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FunctionsClient+Exercise.swift"; sourceTree = "<group>"; };
 		3DD45828C99CD50A0752E100 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		426EB103A3E171CA32917EE7 /* ProgressDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressDashboardView.swift; sourceTree = "<group>"; };
@@ -113,6 +117,7 @@
 		671A61A890442A591B48F08D /* WidgetShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetShared.swift; sourceTree = "<group>"; };
 		682A6BB911DFEFA03A71395D /* OnboardingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlow.swift; sourceTree = "<group>"; };
 		6E079BC24967ED0A7C209756 /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
+		6E66C8739A3182616603A288 /* TelegramSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelegramSettingsView.swift; sourceTree = "<group>"; };
 		7053694C1137E10528520BB1 /* SignInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInView.swift; sourceTree = "<group>"; };
 		70A3B0BA0F18A36A78A9BDCF /* ImageCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCapture.swift; sourceTree = "<group>"; };
 		75431485239C1244321E6E89 /* CalorieRing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalorieRing.swift; sourceTree = "<group>"; };
@@ -126,6 +131,7 @@
 		A131F9C987F1729D6592856B /* LogHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogHubView.swift; sourceTree = "<group>"; };
 		A2EDD15CCE63BAC521529DB6 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		A3BB4049591E8BE2A35F0775 /* FitTrackApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FitTrackApp.swift; sourceTree = "<group>"; };
+		B3F2E2FC6293A25CF35C6A03 /* WeightCheckInSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeightCheckInSheet.swift; sourceTree = "<group>"; };
 		BDDC9A385A93657CDCC0F359 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		C67CA55778A85F611C01A48E /* Repository+Workout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Repository+Workout.swift"; sourceTree = "<group>"; };
 		CA9383D98285FDE5A505EFF3 /* WorkoutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutView.swift; sourceTree = "<group>"; };
@@ -251,6 +257,7 @@
 				DAACA63D0E2163676EA6C82D /* ProfileEditView.swift */,
 				E125725F2663FA3B106157B2 /* RemindersView.swift */,
 				202BD2FD19604EA1CB6F64F7 /* SettingsView.swift */,
+				6E66C8739A3182616603A288 /* TelegramSettingsView.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -293,6 +300,8 @@
 			isa = PBXGroup;
 			children = (
 				A131F9C987F1729D6592856B /* LogHubView.swift */,
+				3144CDF5B7395D100F196907 /* MealChatView.swift */,
+				B3F2E2FC6293A25CF35C6A03 /* WeightCheckInSheet.swift */,
 				8C250266B8BE8F392E163CE2 /* WeightLogSheet.swift */,
 			);
 			path = Logging;
@@ -457,8 +466,8 @@
 			projectRoot = "";
 			targets = (
 				D255A6C7D5D446F750DA7FED /* FitTrack */,
-				C840FA747C462FE4F52104E7 /* FitTrackUITests */,
 				B239314CFF49FAD6F35F99BA /* FitTrackWidgets */,
+				C840FA747C462FE4F52104E7 /* FitTrackUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -517,6 +526,7 @@
 				5491D047D51EE753B84024FB /* ImageEncoding.swift in Sources */,
 				F931EEBCDD1818410842667E /* LabelOCR.swift in Sources */,
 				C116678CDA03EDB20556862D /* LogHubView.swift in Sources */,
+				DAFB0A9B0E67300262230CFB /* MealChatView.swift in Sources */,
 				68BB8E229CEB093E4EF15D55 /* NotificationService.swift in Sources */,
 				A0D7A41F077FC6C72967445B /* OnboardingFlow.swift in Sources */,
 				099E81BAE1B7113622A93ED4 /* ProfileEditView.swift in Sources */,
@@ -529,8 +539,10 @@
 				FFE608BA9D27E1EE11AC15BD /* Repository.swift in Sources */,
 				CF8E2AABA3281C8B85F90D6B /* SettingsView.swift in Sources */,
 				BCE5AE99E79C536EA9C919F1 /* SignInView.swift in Sources */,
+				3B950D6844210990538B117F /* TelegramSettingsView.swift in Sources */,
 				969700593FCEBEEEABACF313 /* Theme.swift in Sources */,
 				13074995490D4607703EAE1F /* TodayView.swift in Sources */,
+				A7377A76A9A4D5617EA0209F /* WeightCheckInSheet.swift in Sources */,
 				8E14A76625C02CD468F34A0E /* WeightLogSheet.swift in Sources */,
 				419C0AC725E5D937F561F764 /* WidgetShared.swift in Sources */,
 				3BF423D0EB8317F42BCC5E85 /* WorkoutView.swift in Sources */,
@@ -681,7 +693,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 16;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 7MFYAGK3VV;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -749,7 +761,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 16;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 7MFYAGK3VV;
 				ENABLE_NS_ASSERTIONS = NO;
